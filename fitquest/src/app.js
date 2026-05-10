@@ -15,7 +15,6 @@ import {
   SELL_MATERIAL,
   SELL_INGREDIENT,
   MAX_COMB_LEVEL,
-  COMB_BONUS_PER_LEVEL,
   SLOT_LABEL,
   SUGGESTED_REPS,
 } from './data/constants.js';
@@ -29,6 +28,31 @@ import { GAME_DATA } from './data/gameData.js';
 import { ZONE_SVG } from './data/zones.js';
 import { defaultState } from './core/state.js';
 import { loadGame, saveGame, resetGame, replaceStoredSave } from './core/storage.js';
+import { shuffle } from './core/utils.js';
+import {
+  xpForNextLevel,
+  getEffectiveStats,
+  computeEquipmentBonus,
+  getDifficultyTier,
+  isGoodMatchup,
+  applyXp,
+} from './core/progression.js';
+import {
+  computeExerciseDamage as calcExerciseDamage,
+  computeBossCounterAttack as calcBossCounterAttack,
+} from './core/combat.js';
+import { rollDrops } from './core/rewards.js';
+import {
+  findZoneById,
+  isZoneUnlocked as playerCanEnterZone,
+  tryUnlockZones as syncUnlockedZones,
+  pickBossForLevel as pickRandomBossForLevel,
+  getRegionalBossForZone,
+  generateProposedExercises as buildExerciseProposal,
+  resolveCurrentZone,
+} from './core/world.js';
+import { $ } from './ui/dom.js';
+import { showToast } from './ui/toast.js';
 
 /* DATA WRAPPERS - Phase 6B */
 function _isDisabled(id){return state&&state.player&&state.player.custom&&state.player.custom.disabledIds.includes(id);}
@@ -81,13 +105,9 @@ function resetState(){
 }
 
 /* HELPERS */
-function $(id){return document.getElementById(id);}
-function showToast(message,duration=2500){const t=$('toast');t.innerHTML=message;t.classList.add('show');clearTimeout(t._timeout);t._timeout=setTimeout(()=>t.classList.remove('show'),duration);}
 function openModal(id){$(id).classList.add('active');}
 function closeModal(id){$(id).classList.remove('active');}
 function rarityLabel(r){return({common:'Commun',rare:'Rare',epic:'Épique',legendary:'Légendaire'})[r]||r;}
-function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
-function randInt(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
 
 const EQUIP_SLOTS=[
   {key:'weapon_main',icon:'⚔️',label:'Arme'},{key:'weapon_secondary',icon:'🏹',label:'Sec.'},
@@ -96,138 +116,23 @@ const EQUIP_SLOTS=[
   {key:'accessory_1',icon:'💍',label:'Bague 1'},{key:'accessory_2',icon:'📿',label:'Bague 2'}
 ];
 
-/* PROGRESSION */
-function xpForNextLevel(level){return 200*(level+1);}
-function getEffectiveStats(item){
-  if(!item||!item.stats)return{};
-  const lvl=item.combLevel||0;
-  const mult=1+COMB_BONUS_PER_LEVEL*lvl;
-  const out={};
-  Object.entries(item.stats).forEach(([k,v])=>{out[k]=Math.round(v*mult);});
-  return out;
-}
-function computeEquipmentBonus(){
-  const bonus={force:0,defense:0,agility:0,constitution:0};
-  Object.values(state.player.equipment).forEach(item=>{
-    if(item){const eff=getEffectiveStats(item);Object.entries(eff).forEach(([k,v])=>{bonus[k]=(bonus[k]||0)+v;});}
-  });
-  return bonus;
-}
-function getDifficultyTier(level){
-  if(level<=10)return{tier:'easy',numEx:3,sets:3,reps:10,seconds:30};
-  if(level<=30)return{tier:'medium',numEx:4,sets:3,reps:12,seconds:40};
-  if(level<=50)return{tier:'hard',numEx:5,sets:4,reps:14,seconds:50};
-  return{tier:'extreme',numEx:6,sets:4,reps:16,seconds:60};
-}
-function isGoodMatchup(exerciseType,bossType){return COUNTER_TYPE[bossType]===exerciseType;}
-function matchupMultiplier(exerciseType,bossType){return isGoodMatchup(exerciseType,bossType)?1.5:1.0;}
-
-/* DAMAGE - Nouvelle formule rééquilibrée */
+/* COMBAT + MONDE (logique importée depuis core/ — liaisons state ici) */
 function computeExerciseDamage(exerciseId,sets,repsOrSec,weight,options={}){
   const ex=allExercises().find(e=>e.id===exerciseId);
-  if(!ex)return 0;
   const recordBonus=state.player.records_bonus[exerciseId]||0;
-  const bonus=computeEquipmentBonus();
-  const forceMult=1+(bonus.force/200); // +0.5% par point de force d'équip
-  // Volume normalisé : 10 reps ou 30s = baseline (×1)
-  const baseUnit=ex.unit==='seconds'?30:10;
-  const volumeMult=repsOrSec/baseUnit;
-  let dmg=(ex.baseDamage+recordBonus)*sets*volumeMult;
-  if(ex.hasWeight&&weight>0)dmg+=weight*0.3;
-  dmg*=forceMult;
-  if(state.boss.current){
-    dmg*=matchupMultiplier(ex.type,state.boss.current.type);
-    // Matchup élémentaire (arme principale équipée vs élément du boss)
-    const weapon=state.player.equipment.weapon_main;
-    if(weapon&&weapon.element&&state.boss.current.element){
-      dmg*=elementMultiplier(weapon.element,state.boss.current.element);
-    }
-    // Réduction par défense du boss
-    const defReduction=100/(100+(state.boss.current.defense||0));
-    dmg*=defReduction;
-  }
-  if(options.skill)dmg*=2;
-  return Math.max(1,Math.round(dmg));
+  const bonus=computeEquipmentBonus(state.player);
+  return calcExerciseDamage(ex,sets,repsOrSec,weight,recordBonus,bonus,state.boss.current,state.player.equipment.weapon_main,options);
 }
-
 function computeBossCounterAttack(boss){
-  const bonus=computeEquipmentBonus();
-  const totalDef=state.player.stats.defense+(bonus.defense||0);
-  const reduction=Math.min(0.7,totalDef/(totalDef+50));
-  const raw=boss.attack*(0.85+Math.random()*0.3);
-  return Math.max(1,Math.round(raw*(1-reduction)));
+  return calcBossCounterAttack(boss,state.player.stats.defense,computeEquipmentBonus(state.player));
 }
-function getZoneById(id){return allZones().find(z=>z.id===id);}
-function getCurrentZone(){return getZoneById(state.player.currentZone)||GAME_DATA.zones[0];}
-
-function isZoneUnlocked(zoneId){
-  if(state.player.unlockedZones.includes(zoneId))return true;
-  const z=getZoneById(zoneId);if(!z)return false;
-  if(state.player.level<z.requiredLevel)return false;
-  if(z.requiredRegionalBoss&&!state.player.defeatedRegionalBosses.includes(z.requiredRegionalBoss))return false;
-  return true;
-}
-function tryUnlockZones(){
-  allZones().forEach(z=>{
-    if(!state.player.unlockedZones.includes(z.id)&&isZoneUnlocked(z.id)){
-      state.player.unlockedZones.push(z.id);
-    }
-  });
-}
-
-function pickBossForLevel(playerLevel){
-  const zone=getCurrentZone();
-  // Filtrer les boss de la zone (hors boss régional + hors boss régionaux déjà battus)
-  const pool=allBosses().filter(b=>{
-    if(b.region!==zone.id)return false;
-    if(b.isRegionalBoss)return false; // boss régional géré séparément
-    return true;
-  });
-  if(pool.length===0){
-    // Fallback : tous les boss de la zone même régionaux non battus
-    const fb=allBosses().filter(b=>b.region===zone.id&&!state.player.defeatedRegionalBosses.includes(b.id));
-    if(fb.length>0)return fb[Math.floor(Math.random()*fb.length)];
-    return allBosses()[0];
-  }
-  // Préférer les boss proches du niveau joueur
-  const close=pool.filter(b=>Math.abs(b.level-playerLevel)<=8);
-  const final=close.length>0?close:pool;
-  return final[Math.floor(Math.random()*final.length)];
-}
-
-function getRegionalBossOfCurrentZone(){
-  const zone=getCurrentZone();
-  if(!zone.regionalBossId)return null;
-  if(state.player.defeatedRegionalBosses.includes(zone.regionalBossId))return null;
-  return allBosses().find(b=>b.id===zone.regionalBossId)||null;
-}
-function generateProposedExercises(boss){
-  const tier=getDifficultyTier(boss.level);
-  const counterT=COUNTER_TYPE[boss.type];
-  const counterCount=Math.ceil(tier.numEx*2/3);
-  const otherCount=tier.numEx-counterCount;
-  const counterPool=allExercises().filter(e=>e.type===counterT);
-  const otherPool=allExercises().filter(e=>e.type!==counterT);
-  const picked=[];
-  shuffle(counterPool).slice(0,counterCount).forEach(e=>picked.push(e));
-  shuffle(otherPool).slice(0,otherCount).forEach(e=>picked.push(e));
-  return shuffle(picked);
-}
-function applyXp(amount){
-  state.player.xp+=amount;
-  let lvl=0;
-  while(state.player.xp>=xpForNextLevel(state.player.level)){
-    state.player.xp-=xpForNextLevel(state.player.level);
-    state.player.level+=1;lvl+=1;
-    state.meta.total_levelups+=1;
-    state.player.stats.force+=5;state.player.stats.defense+=3;
-    state.player.stats.agility+=2;state.player.stats.constitution+=10;
-    state.player.stats.mana=(state.player.stats.mana||100)+10;
-    state.player.stats.hp_current=state.player.stats.constitution;
-    state.player.stats.mp_current=state.player.stats.mana;
-  }
-  return lvl;
-}
+function getZoneById(id){return findZoneById(allZones(),id);}
+function getCurrentZone(){return resolveCurrentZone(state.player.currentZone,allZones());}
+function isZoneUnlocked(zoneId){return playerCanEnterZone(zoneId,state.player,allZones());}
+function tryUnlockZones(){syncUnlockedZones(state.player,allZones());}
+function pickBossForLevel(playerLevel){return pickRandomBossForLevel(playerLevel,getCurrentZone(),allBosses(),state.player.defeatedRegionalBosses);}
+function getRegionalBossOfCurrentZone(){return getRegionalBossForZone(getCurrentZone(),state.player.defeatedRegionalBosses,allBosses());}
+function generateProposedExercises(boss){return buildExerciseProposal(boss,allExercises());}
 
 /* VIEWS */
 function showView(name){
@@ -385,7 +290,7 @@ function renderHero(){
   }
 }
 function renderStats(){
-  const bonus=computeEquipmentBonus();
+  const bonus=computeEquipmentBonus(state.player);
   $('statForce').innerHTML=`${state.player.stats.force}${bonus.force?` <span class="stat-bonus">+${bonus.force}</span>`:''}`;
   $('statDefense').innerHTML=`${state.player.stats.defense}${bonus.defense?` <span class="stat-bonus">+${bonus.defense}</span>`:''}`;
   $('statAgility').innerHTML=`${state.player.stats.agility}${bonus.agility?` <span class="stat-bonus">+${bonus.agility}</span>`:''}`;
@@ -699,7 +604,7 @@ function confirmExerciseSubmission(){
     const prev=state.player.records[currentExerciseId]||0;
     if(weight>prev){state.player.records[currentExerciseId]=weight;state.player.records_bonus[currentExerciseId]=(state.player.records_bonus[currentExerciseId]||0)+5;recordBeaten=true;}
   }
-  const bonus=computeEquipmentBonus();
+  const bonus=computeEquipmentBonus(state.player);
   const totalSpeed=state.player.stats.agility+(bonus.agility||0);
   const critChance=Math.min(40,5+totalSpeed*0.5)/100;
   const isCrit=Math.random()<critChance;
@@ -842,7 +747,7 @@ function finishSession(){
   const completed=state.session_current.exercises.filter(e=>e.completed);
   if(completed.length===0){if(!confirm('Aucun exercice complété. Abandonner la séance ?'))return;state.session_current=null;saveState();showView('dashboard');return;}
   const xpGained=state.session_current.xpEarned+20;
-  const levelsGained=applyXp(xpGained);
+  const levelsGained=applyXp(state,xpGained);
   state.sessions.push({date:state.session_current.startedAt,exercises:completed.map(e=>({id:e.id,sets:e.sets,reps:e.reps,weight:e.weight,damageDealt:e.damageDealt})),totalDamage:state.session_current.totalDamage,totalReceived:state.session_current.totalReceived,xpEarned:xpGained,bossId:state.boss.current.id,bossDefeated:false});
   state.meta.total_sessions+=1;
   if(state.sessions.length>20)state.sessions.shift();
@@ -864,18 +769,6 @@ function showSummaryModal(s){
   openModal('summaryModal');
 }
 
-/* LOOT - matériaux et ingrédients */
-function rollDrops(boss){
-  const drops=[];
-  (boss.drops||[]).forEach(d=>{
-    if(Math.random()<d.chance){
-      const qty=randInt(d.qty[0],d.qty[1]);
-      drops.push({type:d.type,id:d.id,qty});
-    }
-  });
-  return drops;
-}
-
 function victory(){
   const b=state.boss.current;
   const isRegional=!!b.isRegionalBoss;
@@ -883,7 +776,7 @@ function victory(){
   const goldMult=isRegional?1.5:1;
   state.player.gold+=Math.round(b.gold*goldMult);
   const totalXp=Math.round((b.xp+xpFromSession)*(isRegional?1.5:1));
-  const levelsGained=applyXp(totalXp);
+  const levelsGained=applyXp(state,totalXp);
   state.boss.defeated.push({id:b.id,date:new Date().toISOString()});
   state.meta.total_bosses+=1;state.meta.total_sessions+=1;
   // Boss régional : marquage + déblocage zone suivante
