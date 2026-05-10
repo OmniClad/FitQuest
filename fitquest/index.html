@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0A0612">
+<title>FitQuest RPG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=MedievalSharp&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/variables.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/layout.css">
+<link rel="stylesheet" href="styles/components.css">
+<link rel="stylesheet" href="styles/mobile.css">
+</head>
+<body>
+
+<div class="app" id="app" style="display:none;">
+  <header class="app-header">
+    <h1>FitQuest RPG</h1>
+    <div class="subtitle">⚔ Forge ta légende ⚔</div>
+    <button class="settings-btn" id="settingsBtn" title="Paramètres">⚙</button>
+  </header>
+
+  <div id="zoneBanner" class="zone-banner"></div>
+
+  <div class="card hero-card">
+    <div class="hero-avatar">🛡️</div>
+    <div class="hero-name" id="heroName">CHAMPION</div>
+    <div class="hero-level">Niveau <span class="lvl-num" id="heroLevel">1</span> · Héros polyvalent</div>
+    <div class="bar-container">
+      <div class="bar-label"><span class="label-name">❤️ Vie</span><span id="hpText">100 / 100</span></div>
+      <div class="bar"><div class="bar-fill hp" id="hpBar" style="width:100%"></div></div>
+    </div>
+    <div class="bar-container">
+      <div class="bar-label"><span class="label-name">💧 Mana</span><span id="mpText">100 / 100</span></div>
+      <div class="bar"><div class="bar-fill mp" id="mpBar" style="width:100%"></div></div>
+    </div>
+    <div class="bar-container" style="margin-bottom:0;">
+      <div class="bar-label"><span class="label-name">✨ Expérience</span><span id="xpText">0 / 400</span></div>
+      <div class="bar"><div class="bar-fill xp" id="xpBar" style="width:0%"></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px;">
+      <button class="btn btn-secondary" id="btnDrinkPotionDash" style="font-size:11px;padding:10px;border-color:var(--success);color:var(--success);">🧪 Potion (<span id="dashPotionCount">0</span>)</button>
+      <button class="btn btn-secondary" id="btnDrinkEtherDash" style="font-size:11px;padding:10px;border-color:#3B82F6;color:#3B82F6;">💧 Éther (<span id="dashEtherCount">0</span>)</button>
+    </div>
+  </div>
+
+  <div id="regionalBossSlot"></div>
+
+  <div class="card" id="bossCard">
+    <div class="card-title">Boss en cours</div>
+    <div id="bossContainer"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Caractéristiques</div>
+    <div class="stats-grid">
+      <div class="stat-item"><div class="stat-icon">💪</div><div class="stat-info"><div class="stat-label">Force</div><div class="stat-value" id="statForce">10</div></div></div>
+      <div class="stat-item"><div class="stat-icon">🛡️</div><div class="stat-info"><div class="stat-label">Défense</div><div class="stat-value" id="statDefense">5</div></div></div>
+      <div class="stat-item"><div class="stat-icon">⚡</div><div class="stat-info"><div class="stat-label">Vitesse</div><div class="stat-value" id="statAgility">5</div></div></div>
+      <div class="stat-item"><div class="stat-icon">💰</div><div class="stat-info"><div class="stat-label">Or</div><div class="stat-value" id="statGold">0</div></div></div>
+    </div>
+  </div>
+
+  <div class="card" id="equipmentCard">
+    <div class="card-title">Équipement</div>
+    <div class="equipment-grid" id="equipmentGrid"></div>
+  </div>
+
+  <div class="card" id="recordsCard">
+    <div class="card-title">Records personnels</div>
+    <div id="recordsContainer"></div>
+  </div>
+</div>
+
+<div class="session-view" id="viewPreSession">
+  <div class="session-header">
+    <button class="session-back" data-back="dashboard">×</button>
+    <div class="session-title">Préparer la séance</div>
+  </div>
+  <div id="preSessionContent"></div>
+  <div style="margin-top:20px;">
+    <button class="btn btn-primary" id="btnLaunchSession" style="width:100%;font-size:14px;">⚔ Engager le combat</button>
+  </div>
+</div>
+
+<div class="session-view" id="viewSession">
+  <div class="session-header">
+    <button class="session-back" data-back="abandon">×</button>
+    <div class="session-title">⚔ Combat en cours</div>
+  </div>
+  <div class="combat-banner" id="combatBanner"></div>
+  <div class="section-label"><span>Vos coups à porter</span><span style="font-size:10px;color:var(--text-dim);" id="exerciseCount"></span></div>
+  <div id="sessionExerciseList"></div>
+  <div style="margin-top:20px;">
+    <button class="btn btn-success" id="btnFinishSession" style="width:100%;font-size:14px;">Terminer la séance</button>
+  </div>
+</div>
+
+<div class="session-view" id="viewInventory">
+  <div class="session-header">
+    <button class="session-back" data-back="dashboard">×</button>
+    <div class="session-title">🎒 Hub</div>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding:10px 14px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:10px;gap:8px;">
+    <span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;">🧪 <span id="invPotions">0</span></span>
+    <button id="btnDrinkPotionHub" style="background:rgba(34,197,94,0.15);border:1px solid var(--success);color:var(--success);padding:5px 10px;border-radius:6px;font-size:10px;font-family:'Cinzel',serif;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:0.05em;">Boire</button>
+    <span style="flex:1;"></span>
+    <span class="gold-display">💰 <span id="invGold">0</span></span>
+  </div>
+  <div class="tabs">
+    <button class="tab active" data-tab="inventory">🎒 Sac</button>
+    <button class="tab" data-tab="blacksmith">⚒ Forgeron</button>
+    <button class="tab" data-tab="witch">🧙‍♀️ Sorcière</button>
+    <button class="tab" data-tab="merchant">🏪 Marchand</button>
+  </div>
+  <div id="tabInventory">
+    <div class="filter-row" id="invTypeFilters">
+      <button class="filter-pill active" data-filter="all">Tous</button>
+      <button class="filter-pill" data-filter="weapon">⚔️ Armes</button>
+      <button class="filter-pill" data-filter="material">🪵 Matériaux</button>
+      <button class="filter-pill" data-filter="ingredient">🌿 Ingrédients</button>
+    </div>
+    <div id="inventoryGrid"></div>
+  </div>
+  <div id="tabBlacksmith" style="display:none;">
+    <div class="section-label"><span>⚒ Forgeron</span></div>
+    <div style="font-size:12px;color:var(--text-dim);font-style:italic;text-align:center;padding:10px;background:rgba(0,0,0,0.3);border-radius:8px;margin-bottom:12px;">« Apporte-moi tes matériaux et un peu d'or, je te forgerai une lame digne de toi. »</div>
+    <div id="blacksmithRecipes"></div>
+  </div>
+  <div id="tabWitch" style="display:none;">
+    <div class="section-label"><span>🧙‍♀️ Sorcière</span></div>
+    <div style="font-size:12px;color:var(--text-dim);font-style:italic;text-align:center;padding:10px;background:rgba(0,0,0,0.3);border-radius:8px;margin-bottom:12px;">« Le pouvoir des herbes... voilà ce dont tu as besoin, voyageur. »</div>
+    <div id="witchRecipes"></div>
+  </div>
+  <div id="tabMerchant" style="display:none;">
+    <div class="section-label"><span>🏪 Marchand</span></div>
+    <div style="font-size:12px;color:var(--text-dim);font-style:italic;text-align:center;padding:10px;background:rgba(0,0,0,0.3);border-radius:8px;margin-bottom:12px;">« Tout se vend, tout s'achète. »</div>
+    <div class="tabs" style="margin-bottom:12px;">
+      <button class="tab active" data-merchant="buy">Acheter</button>
+      <button class="tab" data-merchant="sell">Vendre</button>
+    </div>
+    <div id="merchantBuy"></div>
+    <div id="merchantSell" style="display:none;"></div>
+  </div>
+</div>
+
+<div class="session-view" id="viewAdmin">
+  <div class="session-header">
+    <button class="session-back" data-back="dashboard">×</button>
+    <div class="session-title">⚙ Admin</div>
+  </div>
+  <div class="admin-tabs" id="adminTabs">
+    <button class="admin-tab active" data-admintab="zones">🗺 Zones</button>
+    <button class="admin-tab" data-admintab="exercises">💪 Exercices</button>
+    <button class="admin-tab" data-admintab="bosses">🐉 Boss</button>
+    <button class="admin-tab" data-admintab="equipment">⚔ Équipements</button>
+    <button class="admin-tab" data-admintab="materials">🪵 Matériaux</button>
+    <button class="admin-tab" data-admintab="ingredients">🌿 Ingrédients</button>
+    <button class="admin-tab" data-admintab="spells">🪄 Sorts</button>
+    <button class="admin-tab" data-admintab="recipes">📜 Recettes</button>
+    <button class="admin-tab" data-admintab="data">💾 Données</button>
+  </div>
+  <div id="adminContent"></div>
+</div>
+
+<div class="modal-overlay" id="adminEditModal">
+  <div class="modal">
+    <div class="modal-icon" id="adminEditIcon">⚙</div>
+    <h2 id="adminEditTitle">Éditer</h2>
+    <div id="adminEditFields"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="adminEditCancel">Annuler</button>
+      <button class="btn btn-gold" id="adminEditSave">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="zoneTravelModal">
+  <div class="modal">
+    <div class="modal-icon">🗺</div>
+    <h2>Voyager</h2>
+    <div class="modal-subtitle">Choisis ta destination. Chaque zone offre ses propres adversaires.</div>
+    <div id="zoneTravelList"></div>
+    <div style="margin-top:14px;"><button class="btn btn-secondary" id="zoneTravelClose" style="width:100%;font-size:11px;">Fermer</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="equipPickerModal">
+  <div class="modal">
+    <div class="modal-icon" id="equipPickerIcon">⚔️</div>
+    <h2 id="equipPickerTitle">Équiper</h2>
+    <div class="modal-subtitle" id="equipPickerSubtitle"></div>
+    <div id="equipPickerCurrent"></div>
+    <div class="section-label" style="margin-top:14px;"><span>Disponibles dans ton sac</span></div>
+    <div id="equipPickerList"></div>
+    <div style="margin-top:14px;"><button class="btn btn-secondary" id="equipPickerClose" style="width:100%;font-size:11px;">Fermer</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="itemDetailModal">
+  <div class="modal">
+    <div class="item-detail-portrait" id="itemDetailPortrait"></div>
+    <h2 id="itemDetailName"></h2>
+    <div class="modal-subtitle" id="itemDetailRarity"></div>
+    <div id="itemDetailDesc" class="exercise-desc"></div>
+    <div class="item-stat-list" id="itemDetailStats"></div>
+    <div id="itemDetailActions"></div>
+  </div>
+</div>
+
+<div class="action-bar" id="actionBar" style="display:none;">
+  <div class="action-bar-inner">
+    <button class="btn btn-primary" id="btnStartSession">Commencer</button>
+    <button class="btn btn-secondary" id="btnInventory">🎒 Hub</button>
+    <button class="btn btn-secondary" id="btnAdmin">⚙ Admin</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="welcomeModal">
+  <div class="modal">
+    <div class="modal-icon">⚔️</div>
+    <h2>Bienvenue, héros</h2>
+    <div class="modal-subtitle">Une grande aventure t'attend... Quel sera ton nom ?</div>
+    <input type="text" class="input" id="nameInput" placeholder="Saisis ton nom..." maxlength="20" autocomplete="off">
+    <div class="modal-footer"><button class="btn btn-gold" id="confirmName">Forger mon destin</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-icon">⚙</div>
+    <h2>Paramètres</h2>
+    <div class="modal-subtitle">Modifie ton nom ou efface ta progression.</div>
+    <input type="text" class="input" id="renameInput" placeholder="Nouveau nom..." maxlength="20" autocomplete="off">
+    <div class="modal-footer"><button class="btn btn-secondary" id="cancelSettings">Annuler</button><button class="btn btn-gold" id="saveSettings">Enregistrer</button></div>
+    <div style="margin-top:16px;text-align:center;"><button class="btn btn-secondary" id="resetGame" style="font-size:10px;color:var(--blood-bright);border-color:rgba(196,30,58,0.4);width:100%;">⚠ Réinitialiser toute la progression</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="exerciseModal">
+  <div class="modal">
+    <div class="modal-icon" id="exModalIcon">💪</div>
+    <h2 id="exModalName">Pompes</h2>
+    <div id="exModalMatchup" style="text-align:center;margin-bottom:8px;"></div>
+    <div class="exercise-desc" id="exModalDesc">Description...</div>
+    <div class="input-row">
+      <div class="input-group"><label>Séries</label><input type="number" class="input" id="exSets" min="1" max="20" value="3"></div>
+      <div class="input-group"><label id="exRepsLabel">Répétitions</label><input type="number" class="input" id="exReps" min="1" max="500" value="10"></div>
+    </div>
+    <div class="input-row single" id="exWeightContainer">
+      <div class="input-group"><label>Poids (kg)</label><input type="number" class="input" id="exWeight" min="0" max="500" step="0.5" value="0"></div>
+    </div>
+    <div class="damage-preview">Dégâts à infliger<span class="big" id="damagePreviewValue">60</span><div class="matchup-note" id="matchupNote"></div></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="cancelExercise">Annuler</button>
+      <button class="btn btn-gold" id="confirmExercise">⚔ Frapper le boss !</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="victoryModal">
+  <div class="modal victory-modal">
+    <div class="modal-icon">🏆</div>
+    <h2 id="victoryTitle">VICTOIRE !</h2>
+    <div class="modal-subtitle" id="victorySubtitle">Le boss est vaincu !</div>
+    <div id="victoryLevelUp"></div>
+    <div id="victoryContent"></div>
+    <div style="margin-top:16px;"><button class="btn btn-gold" id="btnVictoryReturn" style="width:100%;">Retour au repaire</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="defeatModal">
+  <div class="modal defeat-modal">
+    <div class="modal-icon">💀</div>
+    <h2>DÉFAITE</h2>
+    <div class="modal-subtitle">Vos forces vous abandonnent...</div>
+    <div id="defeatContent" style="text-align:center;padding:14px;background:rgba(0,0,0,0.3);border-radius:8px;font-size:13px;color:var(--text-dim);line-height:1.6;"></div>
+    <div style="margin-top:16px;"><button class="btn btn-gold" id="btnDefeatReturn" style="width:100%;">Reprendre des forces</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="summaryModal">
+  <div class="modal">
+    <div class="modal-icon">🎯</div>
+    <h2>Séance terminée</h2>
+    <div class="modal-subtitle" id="summarySubtitle">Vous reprenez votre souffle...</div>
+    <div id="summaryLevelUp"></div>
+    <div id="summaryContent"></div>
+    <div style="margin-top:16px;"><button class="btn btn-gold" id="btnReturnDashboard" style="width:100%;">Retour au repaire</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="src/app.js"></script>
+</body>
+</html>
