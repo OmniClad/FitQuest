@@ -33,8 +33,13 @@ export function elementMultiplier(attackerEl, defenderEl) {
   return 1;
 }
 
-export function elementTag(el) {
+export function elementTag(el, opts = {}) {
   if (!el || !ELEMENTS[el]) return '';
   const e = ELEMENTS[el];
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0.05em;background:${e.color}33;color:${e.color};border:1px solid ${e.color};">${e.icon} ${e.name}</span>`;
+  const tip =
+    'Élément magique (cycle Feu → Vent → Foudre → Eau). Différent du type d’exercice (Vitesse / Force / Endurance).';
+  const interactiveAttrs = opts.interactive
+    ? ` class="cycle-trigger element-cycle-trigger" data-cycle-kind="element" title="${tip}"`
+    : ` title="${tip}"`;
+  return `<span${interactiveAttrs} style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0.05em;background:${e.color}33;color:${e.color};border:1px solid ${e.color};">${e.icon} ${e.name}</span>`;
 }

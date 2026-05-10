@@ -76,6 +76,7 @@
 .type-tag.type-agility{background:rgba(251,191,36,0.2);color:var(--type-agility);border:1px solid var(--type-agility);}
 .type-tag.type-endurance{background:rgba(34,211,238,0.2);color:var(--type-endurance);border:1px solid var(--type-endurance);}
 .matchup-good{display:inline-flex;align-items:center;gap:3px;color:var(--success);font-size:11px;font-weight:700;}
+.matchup-bad{display:inline-flex;align-items:center;gap:3px;color:var(--blood-bright);font-size:11px;font-weight:700;}
 
 .empty-state{text-align:center;padding:24px 12px;color:var(--text-faint);font-style:italic;font-size:13px;}
 .empty-state .icon{font-size:32px;display:block;margin-bottom:8px;opacity:0.4;}

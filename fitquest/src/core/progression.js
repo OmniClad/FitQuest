@@ -93,10 +93,31 @@ export function isGoodMatchup(exerciseType, bossType) {
   return COUNTER_TYPE[bossType] === exerciseType;
 }
 
-/** +50 % si le type cible la faiblesse du boss ; −33 % (symétrique) si mauvais matchup. */
+/** Multiplicateur si l’exercice cible la faiblesse du boss (triangle Force / Vitesse / Endurance). */
+export const MATCHUP_ADVANTAGE_MULT = 1.5;
+
+/**
+ * Multiplicateur si le type d’exercice est celui que le boss « domine » sur le triangle (symétrique du bonus).
+ * Ce n’est pas une armure générique : seuls les exercices de ce type subissent la pénalité.
+ */
+export const MATCHUP_WEAK_MULT = 1 / MATCHUP_ADVANTAGE_MULT;
+
+/** Pourcentage arrondi affiché en UI pour le malus (×2/3 des dégâts de base). */
+export const MATCHUP_WEAK_PCT_LABEL = Math.round((1 - MATCHUP_WEAK_MULT) * 100);
+
+/**
+ * Type d’exercice qui inflige moins de dégâts à ce boss (multiplicateur {@link MATCHUP_WEAK_MULT}).
+ * @param {string} bossType
+ */
+export function disadvantagedExerciseTypeVsBoss(bossType) {
+  const t = Object.keys(COUNTER_TYPE).find((k) => COUNTER_TYPE[k] === bossType);
+  return t ?? null;
+}
+
+/** +50 % si le type cible la faiblesse du boss ; malus {@link MATCHUP_WEAK_PCT_LABEL} % si mauvais matchup. */
 export function matchupMultiplier(exerciseType, bossType) {
-  if (isGoodMatchup(exerciseType, bossType)) return 1.5;
-  if (isWeakMatchup(exerciseType, bossType)) return 1 / 1.5;
+  if (isGoodMatchup(exerciseType, bossType)) return MATCHUP_ADVANTAGE_MULT;
+  if (isWeakMatchup(exerciseType, bossType)) return MATCHUP_WEAK_MULT;
   return 1.0;
 }
 

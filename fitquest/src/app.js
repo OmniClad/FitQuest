@@ -38,6 +38,7 @@ import { renderAdminPanel } from './ui/renderAdmin.js';
 import { renderQuestsView } from './ui/renderQuests.js';
 import { showFloatingDmg, flashBossPortrait, shakeScreen } from './ui/renderCombatFx.js';
 import { showSummaryModal, showRecoverySummaryModal, showVictoryModal, showDefeatModal } from './ui/renderModals.js';
+import { openEnemyStatsModal } from './ui/enemyStatsPanel.js';
 
 const audioBus = createAudioBus();
 
@@ -46,7 +47,7 @@ document.addEventListener(
   (e) => {
     if (
       e.target.closest(
-        'button, .action-btn, .btn, .session-back, .exercise-card, .zone-banner-action, .equip-slot, .presession-launch-pill',
+        'button, .action-btn, .btn, .session-back, .exercise-card, .zone-banner-action, .equip-slot, .presession-launch-pill, .presession-stats-trigger, .cycle-trigger',
       )
     ) {
       gameEvents.emit('ui_click');
@@ -283,6 +284,11 @@ document.querySelectorAll('.session-back').forEach(b=>{
 });
 
 $('viewPreSession').addEventListener('click',(e)=>{
+  if(e.target.closest('.presession-stats-trigger')){
+    e.preventDefault();
+    openEnemyStatsModal(state.boss?.current);
+    return;
+  }
   const actBtn=e.target.closest('[data-presession-action]');
   if(actBtn){handlePresessionAction(actBtn.dataset.presessionAction);return;}
   const launch=e.target.closest('#btnLaunchSession');
@@ -313,6 +319,13 @@ document.querySelectorAll('#invTypeFilters .filter-pill').forEach(p=>{
 });
 $('itemDetailModal').addEventListener('click',(e)=>{if(e.target.id==='itemDetailModal')closeModal('itemDetailModal');});
 $('settingsModal').addEventListener('click',(e)=>{if(e.target.id==='settingsModal')closeModal('settingsModal');});
+document.addEventListener('click',(e)=>{
+  const trigger=e.target.closest('.cycle-trigger');
+  if(!trigger)return;
+  e.preventDefault();
+  e.stopPropagation();
+  openEnemyStatsModal(state.boss?.current, trigger.dataset.cycleKind === 'element' ? 'element' : 'specialty');
+});
 
 /* Boire potion hors combat */
 $('btnDrinkPotionDash').addEventListener('click',drinkPotionOOC);
@@ -329,6 +342,8 @@ $('zoneTravelClose').addEventListener('click',()=>closeModal('zoneTravelModal'))
 $('zoneTravelModal').addEventListener('click',(e)=>{if(e.target.id==='zoneTravelModal')closeModal('zoneTravelModal');});
 $('equipPickerClose').addEventListener('click',()=>closeModal('equipPickerModal'));
 $('equipPickerModal').addEventListener('click',(e)=>{if(e.target.id==='equipPickerModal')closeModal('equipPickerModal');});
+$('enemyStatsClose').addEventListener('click',()=>closeModal('enemyStatsModal'));
+$('enemyStatsModal').addEventListener('click',(e)=>{if(e.target.id==='enemyStatsModal')closeModal('enemyStatsModal');});
 
 bindUi({
   getState: () => state,
@@ -382,6 +397,7 @@ bindUi({
   isEntryDisabled:catalog.isEntryDisabled,
   bossSpriteCtl: null,
   bossSpritePreCtl: null,
+  openEnemyStatsModal,
 });
 
 boot();

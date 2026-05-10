@@ -7,12 +7,15 @@ import {
   COUNTER_TYPE,
 } from '../data/constants.js';
 import { ELEMENTS, elementTag } from '../data/elements.js';
+import { ZONE_SVG } from '../data/zones.js';
 import {
   getDifficultyTier,
   isGoodMatchup,
+  isWeakMatchup,
   getDifficultyScore,
   estimateSessionMinutes,
   matchupMultiplier,
+  MATCHUP_WEAK_PCT_LABEL,
 } from '../core/progression.js';
 import { gameEvents } from '../audio/gameEvents.js';
 import { mountBossSprite, getBossSpriteKey } from '../sprites/spritePlayer.js';
@@ -31,6 +34,43 @@ let presessionLaunchTimeoutId = null;
 let presessionRingFillTimeoutId = null;
 
 let presessionNumExOverride = null;
+
+const COMBAT_ARRIVAL_HALO_MS = 3000;
+
+/**
+ * Halo de flou d’arrivée : injecté après le `innerHTML` du bandeau pour survivre aux re-rendus,
+ * avec délai d’animation négatif pour rester aligné sur le temps écoulé depuis `startedAt`.
+ * @param {HTMLElement | null} bannerEl
+ * @param {string} [startedAtIso]
+ */
+function mountCombatArrivalHalo(bannerEl, startedAtIso) {
+  if (!bannerEl || !startedAtIso) return;
+  if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    return;
+  }
+  const t0 = Date.parse(startedAtIso);
+  if (!Number.isFinite(t0)) return;
+  const elapsed = Date.now() - t0;
+  if (elapsed < 0 || elapsed >= COMBAT_ARRIVAL_HALO_MS + 200) return;
+  const bg = bannerEl.querySelector('.combat-stage-bg');
+  if (!bg) return;
+  const delay = `-${Math.min(elapsed, COMBAT_ARRIVAL_HALO_MS)}ms`;
+  bannerEl.classList.add('combat-arrival-active');
+  bannerEl.style.setProperty('--combat-arrival-delay', delay);
+  const halo = document.createElement('div');
+  halo.className = 'combat-bg-focus-halo';
+  halo.setAttribute('aria-hidden', 'true');
+  halo.style.animationDelay = delay;
+  bg.insertAdjacentElement('afterend', halo);
+  window.setTimeout(
+    () => {
+      bannerEl.classList.remove('combat-arrival-active');
+      bannerEl.style.removeProperty('--combat-arrival-delay');
+      halo.remove();
+    },
+    Math.max(0, COMBAT_ARRIVAL_HALO_MS - elapsed) + 80,
+  );
+}
 
 export function cancelPresessionLaunchUi() {
   if (presessionRingFillTimeoutId != null) {
@@ -137,6 +177,14 @@ function challengeLabelFromScore(diffScore) {
   return 'Niveau intense';
 }
 
+function zoneBackgroundHtml(zone, imageKey) {
+  const svg = ZONE_SVG[zone?.svgKey] || ZONE_SVG.default;
+  const img = zone?.[imageKey] || zone?.bgImage;
+  return img
+    ? `<img src="${img}" alt="" onerror="this.parentNode.innerHTML='${svg.replace(/"/g, '&quot;').replace(/\n/g, '')}'">`
+    : svg;
+}
+
 export function resetPresessionDraft() {
   presessionNumExOverride = null;
 }
@@ -184,8 +232,12 @@ export function renderPreSessionView() {
   const effectiveTier = { ...tier, numEx: proposed.length };
   const diffScore = getDifficultyScore(boss, effectiveTier);
   const estMin = estimateSessionMinutes(proposed, tier);
+  const zone = uiCtx.getCurrentZone();
+  const preSessionBgHtml = zoneBackgroundHtml(zone, 'preSessionBgImage');
 
   const introBossHtml = `<div class="presession-intro-card">
+  <div class="presession-scene-bg">${preSessionBgHtml}</div>
+  <div class="presession-scene-vignette"></div>
   <div class="presession-boss-atmosphere" aria-hidden="true"></div>
   <div class="presession-intro-session">
     <div class="presession-summary-head">${sessionPaceLabel(tier.tier)} · ${challengeLabelFromScore(diffScore)}</div>
@@ -212,20 +264,21 @@ export function renderPreSessionView() {
       </div>
     </div>
     <div class="presession-weak-block">
-      <div class="presession-weak-cols">
-        <div class="presession-weak-col presession-weak-col--weakness">
-          <div class="presession-weak-line">
-            <span class="presession-weak-label">Faiblesse</span>
-            <span class="type-tag ${TYPE_CSS[counterT]} presession-weak-type-tag">${TYPE_ICON[counterT]} ${TYPE_LABEL[counterT]} <span class="presession-weak-pct">+50&nbsp;%</span></span>
-          </div>
+      <div class="presession-weak-rows">
+        <div class="presession-weak-row">
+          <span class="presession-weak-label">Spécialité</span>
+          <span class="type-tag ${TYPE_CSS[boss.type]} presession-resist-type-tag cycle-trigger specialty-cycle-trigger" data-cycle-kind="specialty" title="Voir le cadran des spécialités">${TYPE_ICON[boss.type]} ${TYPE_LABEL[boss.type]}</span>
         </div>
-        <div class="presession-weak-col presession-weak-col--type">
-          <div class="presession-resist-stack">
-            <span class="presession-weak-label">Résistance</span>
-            <span class="type-tag ${TYPE_CSS[boss.type]} presession-resist-type-tag">${TYPE_ICON[boss.type]} ${TYPE_LABEL[boss.type]}</span>
-          </div>
+        <div class="presession-weak-row">
+          <span class="presession-weak-label">Élément</span>
+          ${
+            boss.element
+              ? `<div class="presession-element-slot">${elementTag(boss.element, { interactive: true })}</div>`
+              : '<div class="presession-element-slot presession-element-slot--empty"><span class="presession-weak-dash">—</span></div>'
+          }
         </div>
       </div>
+      <button type="button" class="presession-stats-trigger" aria-label="Ouvrir le détail des statistiques de l’adversaire">Statistiques</button>
     </div>
   </div>
 </div>`;
@@ -337,6 +390,8 @@ export function renderSessionView() {
   const mpPct = (mp / mpMax) * 100;
   const equippedSpells = (state.player.equippedSpells || []).map((id) => (id ? uiCtx.getSpellById(id) : null));
   const spellsUsedOnce = state.boss.current.spellsUsedThisFight || {};
+  const zone = uiCtx.getCurrentZone();
+  const zoneBgHtml = zoneBackgroundHtml(zone, 'combatBgImage');
   const spellButtons = equippedSpells
     .map((s, i) => {
       if (!s)
@@ -349,7 +404,35 @@ export function renderSessionView() {
       return `<button class="action-btn spell" data-spell-idx="${i}" ${disabled ? 'disabled' : ''} style="border-color:${ELEMENTS[s.element] ? ELEMENTS[s.element].color : 'var(--gold)'};"><div class="ico">${elIcon}</div>${s.name}<div class="sub">${subLine}</div></button>`;
     })
     .join('');
-  $('combatBanner').innerHTML = `<div class="combat-boss-row"><div class="combat-boss-portrait-mid rarity-${b.rarity}" id="bossPortraitInBanner"><img src="${uiCtx.iconUrl(b.icon, color)}" alt="" class="boss-fallback-img" onerror="this.outerHTML='<span class=&quot;boss-emoji&quot;>${fallback}</span>'"></div><div class="combat-boss-info"><div class="name" style="color:${color}">${b.name}</div><div class="meta">Niveau ${b.level} · <span class="type-tag ${TYPE_CSS[b.type]}">${TYPE_ICON[b.type]} ${TYPE_LABEL[b.type]}</span> ${b.element ? elementTag(b.element) : ''}</div><div class="bar"><div class="bar-fill hp" id="bossHpBar" style="width:${hpPct}%"></div></div><div style="font-size:10px;color:var(--text-dim);margin-top:4px;" id="bossHpText">❤️ ${b.hp} / ${b.hp_max}</div></div></div><div class="combat-player-row"><div class="label"><span>❤️ ${state.player.name || 'Champion'}</span><span id="playerHpText">${state.player.stats.hp_current} / ${state.player.stats.constitution}</span></div><div class="bar"><div class="bar-fill hp" id="playerHpBar" style="width:${playerHpPct}%"></div></div><div class="label" style="margin-top:6px;"><span>💧 Mana</span><span id="playerMpText">${mp} / ${mpMax}</span></div><div class="bar"><div class="bar-fill mp" id="playerMpBar" style="width:${mpPct}%"></div></div><div class="combat-actions-inline" style="grid-template-columns:1fr 1fr;margin-top:10px;"><button class="action-btn skill ${tokenUsed || skillUsed ? '' : 'active'}" id="actSkill" ${skillUsed || tokenUsed ? 'disabled' : ''}><div class="ico">⚡</div>Frappe Héroïque<div class="sub">${skillUsed ? 'Déjà utilisée' : tokenUsed ? 'Tour pris' : '×2 sur le prochain coup'}</div></button><button class="action-btn potion" id="actPotion" ${state.player.potions <= 0 ? 'disabled' : ''}><div class="ico">🧪</div>Potion<div class="sub">+50 PV (${state.player.potions} restantes)</div></button></div><div class="combat-actions-inline" style="grid-template-columns:repeat(3,1fr);margin-top:6px;">${spellButtons}</div></div>`;
+  const itemPotionHtml = `<button class="action-btn potion" id="actPotion" ${state.player.potions <= 0 ? 'disabled' : ''}><div class="ico">🧪</div>Potion<div class="sub">+50 PV · ${state.player.potions}</div></button>`;
+  const enemyTypeLine = `<span class="type-tag ${TYPE_CSS[b.type]} cycle-trigger specialty-cycle-trigger" data-cycle-kind="specialty" title="Voir le cadran des spécialités">${TYPE_ICON[b.type]} ${TYPE_LABEL[b.type]}</span>${b.element ? elementTag(b.element, { interactive: true }) : ''}`;
+  const combatPlayerStatusHtml = `<div class="combat-status-panel combat-status-player"><div class="combat-status-title"><span>${state.player.name || 'Champion'}</span><span>Niv. ${state.player.level ?? 1}</span></div><div class="combat-stat-line"><span>PV</span><strong id="playerHpText">${state.player.stats.hp_current} / ${state.player.stats.constitution}</strong></div><div class="bar"><div class="bar-fill hp" id="playerHpBar" style="width:${playerHpPct}%"></div></div><div class="combat-stat-line"><span>MP</span><strong id="playerMpText">${mp} / ${mpMax}</strong></div><div class="bar"><div class="bar-fill mp" id="playerMpBar" style="width:${mpPct}%"></div></div></div>`;
+  const combatCommandColumnHtml = `<div class="combat-command-panel combat-command-panel--side"><button type="button" class="action-btn skill combat-command-head combat-command-skill-full ${tokenUsed || skillUsed ? '' : 'active'}" id="actSkill" ${skillUsed || tokenUsed ? 'disabled' : ''} title="${skillUsed ? 'Déjà utilisée' : tokenUsed ? 'Tour pris' : 'Héroïque ×2'}"><span class="action-btn-inline"><span class="ico">⚡</span><span class="action-btn-text">Frappe</span></span></button><div class="combat-special-actions" role="group" aria-label="Actions spéciales"><button type="button" class="action-btn combat-drawer-toggle combat-special-toggle" id="toggleSpellDrawer" aria-expanded="false" aria-controls="combatSpellDrawer"><span class="ico">✨</span><span class="action-btn-text">Sorts</span></button><button type="button" class="action-btn combat-drawer-toggle combat-drawer-toggle--items combat-special-toggle" id="toggleItemDrawer" aria-expanded="false" aria-controls="combatItemDrawer"><span class="ico">🎒</span><span class="action-btn-text">Objets</span></button></div></div>`;
+  const combatDrawersHtml = `<div class="combat-hud-drawers"><div class="combat-drawer combat-spell-drawer" id="combatSpellDrawer" role="region" aria-label="Sorts équipés"><div class="combat-drawer-inner"><div class="combat-drawer-grid">${spellButtons}</div></div></div><div class="combat-drawer combat-item-drawer" id="combatItemDrawer" role="region" aria-label="Objets"><div class="combat-drawer-inner"><div class="combat-drawer-grid">${itemPotionHtml}</div></div></div></div>`;
+  const combatHudHtml = `<div class="combat-ff7-hud"><div class="combat-hud-player-row">${combatPlayerStatusHtml}${combatCommandColumnHtml}</div>${combatDrawersHtml}</div>`;
+  const combatBannerEl = $('combatBanner');
+  combatBannerEl.innerHTML = `<div class="combat-stage-bg">${zoneBgHtml}</div><div class="combat-stage-vignette"></div><div class="combat-stage"><div class="combat-actors"><div class="combat-boss-center"><div class="combat-boss-stack"><div class="combat-boss-row"><div class="combat-boss-portrait-mid rarity-${b.rarity}" id="bossPortraitInBanner"><img src="${uiCtx.iconUrl(b.icon, color)}" alt="" class="boss-fallback-img" onerror="this.outerHTML='<span class=&quot;boss-emoji&quot;>${fallback}</span>'"></div></div><div class="combat-boss-nameplate" role="group" aria-label="Ennemi"><div class="combat-boss-nameplate-title"><span class="combat-boss-nameplate-name" style="color:${color}">${b.name}</span><span class="combat-boss-nameplate-level">Niv. ${b.level}</span></div><div class="combat-boss-nameplate-meta">${enemyTypeLine}</div><div class="bar combat-boss-nameplate-bar"><div class="bar-fill hp" id="bossHpBar" style="width:${hpPct}%"></div></div><div class="combat-boss-nameplate-hp combat-stat-line"><span>PV</span><strong id="bossHpText">❤️ ${b.hp} / ${b.hp_max}</strong></div></div></div></div></div>${combatHudHtml}</div>`;
+  const spellDrawerEl = combatBannerEl.querySelector('#combatSpellDrawer');
+  const itemDrawerEl = combatBannerEl.querySelector('#combatItemDrawer');
+  const toggleSpellBtn = combatBannerEl.querySelector('#toggleSpellDrawer');
+  const toggleItemBtn = combatBannerEl.querySelector('#toggleItemDrawer');
+  const syncCombatDrawers = (spellOpen, itemOpen) => {
+    spellDrawerEl?.classList.toggle('is-open', spellOpen);
+    itemDrawerEl?.classList.toggle('is-open', itemOpen);
+    toggleSpellBtn?.classList.toggle('is-active', spellOpen);
+    toggleItemBtn?.classList.toggle('is-active', itemOpen);
+    toggleSpellBtn?.setAttribute('aria-expanded', spellOpen ? 'true' : 'false');
+    toggleItemBtn?.setAttribute('aria-expanded', itemOpen ? 'true' : 'false');
+  };
+  toggleSpellBtn?.addEventListener('click', () => {
+    const wasOpen = spellDrawerEl?.classList.contains('is-open');
+    syncCombatDrawers(!wasOpen, false);
+  });
+  toggleItemBtn?.addEventListener('click', () => {
+    const wasOpen = itemDrawerEl?.classList.contains('is-open');
+    syncCombatDrawers(false, !wasOpen);
+  });
+  mountCombatArrivalHalo(combatBannerEl, state.session_current.startedAt);
   const remaining = state.session_current.exercises.filter((e) => !e.completed).length;
   const total = state.session_current.exercises.length;
   $('exerciseCount').textContent = `${total - remaining} / ${total} fait${total - remaining > 1 ? 's' : ''}`;
@@ -382,12 +465,6 @@ export function renderSessionView() {
     uiCtx.saveState();
     renderSessionView();
   });
-  document.querySelectorAll('[data-spell-idx]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.spellIdx);
-      uiCtx.castSpell(idx);
-    });
-  });
   $('actPotion').addEventListener('click', () => {
     if (state.player.potions <= 0) {
       uiCtx.showToast('⚠ Plus de potions');
@@ -404,7 +481,7 @@ export function renderSessionView() {
     renderSessionView();
   });
   document.querySelectorAll('#combatBanner [data-spell-idx]').forEach((btn) => {
-    btn.addEventListener('click', () => uiCtx.castSpell(parseInt(btn.dataset.spellIdx)));
+    btn.addEventListener('click', () => uiCtx.castSpell(parseInt(btn.dataset.spellIdx, 10)));
   });
   const bannerHost = $('bossPortraitInBanner');
   if (bannerHost) {
@@ -427,7 +504,11 @@ export function openExerciseModal(exerciseId) {
   $('exModalIcon').textContent = TYPE_ICON[ex.type];
   $('exModalDesc').textContent = ex.desc;
   const isGood = isGoodMatchup(ex.type, b.type);
-  $('exModalMatchup').innerHTML = `<span class="type-tag ${TYPE_CSS[ex.type]}">${TYPE_LABEL[ex.type]}</span>${isGood ? ' <span class="matchup-good">🟢 Bon matchup +50%</span>' : ''}`;
+  const isWeak = isWeakMatchup(ex.type, b.type);
+  let matchupExtra = '';
+  if (isGood) matchupExtra = ' <span class="matchup-good">🟢 Bon matchup +50%</span>';
+  else if (isWeak) matchupExtra = ` <span class="matchup-bad">🔴 Désavantage −${MATCHUP_WEAK_PCT_LABEL}%</span>`;
+  $('exModalMatchup').innerHTML = `<span class="type-tag ${TYPE_CSS[ex.type]}">${TYPE_LABEL[ex.type]}</span>${matchupExtra}`;
   $('exSets').value = state.session_current.suggestedSets || 3;
   if (ex.unit === 'seconds') {
     $('exRepsLabel').textContent = 'Secondes';
@@ -455,8 +536,10 @@ export function updateDamagePreview() {
   const dmg = uiCtx.computeExerciseDamage(currentExerciseId, sets, repsOrSec, weight, { skill: skillArmed });
   $('damagePreviewValue').textContent = dmg;
   const isGood = isGoodMatchup(ex.type, state.boss.current.type);
+  const isWeak = isWeakMatchup(ex.type, state.boss.current.type);
   let note = '';
   if (isGood) note = '🟢 Bon matchup actif (+50%)';
+  else if (isWeak) note = `🔴 Mauvais matchup (−${MATCHUP_WEAK_PCT_LABEL} % sur les dégâts de base)`;
   if (skillArmed) note += (note ? '<br>' : '') + '⚡ Frappe Héroïque armée (×2)';
   $('matchupNote').innerHTML = note;
 }

@@ -49,7 +49,9 @@ export function createAdminForms(deps) {
         sel('Boss régional de cette zone', 'regionalBossId', item.regionalBossId || '', bossOptions) +
         txt('Couleur thème (#hex)', 'themeColor', item.themeColor || '#22c55e') +
         txt('Couleur accent (#hex)', 'accent', item.accent || '#86efac') +
-        txt('URL image background (optionnel)', 'bgImage', item.bgImage || '') +
+        txt('Image dashboard', 'bgImage', item.bgImage || '') +
+        txt('Image combat', 'combatBgImage', item.combatBgImage || '') +
+        txt('Image pré-combat', 'preSessionBgImage', item.preSessionBgImage || '') +
         sel('Paysage SVG par défaut', 'svgKey', item.svgKey || 'forest', [
           ['forest', 'Forêt'],
           ['swamp', 'Marais'],
@@ -200,6 +202,8 @@ export function createAdminForms(deps) {
         themeColor: v('themeColor'),
         accent: v('accent'),
         bgImage: v('bgImage') || null,
+        combatBgImage: v('combatBgImage') || null,
+        preSessionBgImage: v('preSessionBgImage') || null,
         svgKey: v('svgKey'),
         desc: v('desc'),
       };
