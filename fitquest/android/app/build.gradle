@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+def versionProps = new Properties()
+def versionPropsFile = file("../../version.properties")
+if (!versionPropsFile.exists()) {
+    throw new GradleException("Fichier version introuvable : ${versionPropsFile.absolutePath}")
+}
+versionPropsFile.withInputStream { versionProps.load(it) }
+def fitquestVersionName = versionProps.getProperty("versionName", "0.0.0").trim()
+def fitquestVersionCode = versionProps.getProperty("versionCode", "1").trim().toInteger()
+
 android {
     namespace = "com.wayzdigital.fitquest"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +16,8 @@ android {
         applicationId "com.wayzdigital.fitquest"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode fitquestVersionCode
+        versionName fitquestVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -52,4 +61,44 @@ try {
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
+
+// Copie l’APK vers la racine du dépôt Git (dossier FitQuest/) pour commit / partage.
+def repoRootDir = rootProject.file("../..")
+
+afterEvaluate {
+    tasks.named("assembleDebug").configure {
+        doLast {
+            def apkFile = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
+            if (!apkFile.exists()) {
+                logger.warn("APK debug introuvable (${apkFile}), copie vers la racine ignorée.")
+                return
+            }
+            def outName = "FitQuest-${fitquestVersionName}-debug.apk"
+            copy {
+                from apkFile
+                into repoRootDir
+                rename { outName }
+            }
+            logger.lifecycle("APK debug copié : ${new File(repoRootDir, outName).canonicalPath}")
+        }
+    }
+
+    tasks.named("assembleRelease").configure {
+        doLast {
+            def releaseDir = layout.buildDirectory.dir("outputs/apk/release").get().asFile
+            def apkFile = releaseDir.listFiles()?.find { it.name.endsWith(".apk") }
+            if (apkFile == null || !apkFile.exists()) {
+                logger.warn("APK release introuvable dans ${releaseDir}, copie vers la racine ignorée.")
+                return
+            }
+            def outName = "FitQuest-${fitquestVersionName}.apk"
+            copy {
+                from apkFile
+                into repoRootDir
+                rename { outName }
+            }
+            logger.lifecycle("APK release copié : ${new File(repoRootDir, outName).canonicalPath}")
+        }
+    }
 }

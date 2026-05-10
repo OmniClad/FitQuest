@@ -41,4 +41,7 @@ export GRADLE_USER_HOME="${GRADLE_USER_HOME:-/tmp/fitquest-gradle}"
 
 ./android/gradlew -p android assembleDebug
 
-echo "APK generated: $ROOT_DIR/android/app/build/outputs/apk/debug/app-debug.apk"
+REPO_ROOT="$(cd "$ROOT_DIR/.." && pwd)"
+VER="$(grep -E '^versionName=' "$ROOT_DIR/version.properties" | head -n1 | cut -d= -f2-)"
+echo "APK (build Gradle): $ROOT_DIR/android/app/build/outputs/apk/debug/app-debug.apk"
+echo "APK (racine dépôt, pour git push): $REPO_ROOT/FitQuest-${VER}-debug.apk"
