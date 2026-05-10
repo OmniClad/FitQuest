@@ -46,11 +46,15 @@ export function getRegionalBossForZone(zone, defeatedRegionalBosses, allBosses) 
   return allBosses.find((b) => b.id === zone.regionalBossId) || null;
 }
 
-export function generateProposedExercises(boss, allExercises) {
+export function generateProposedExercises(boss, allExercises, opts = {}) {
   const tier = getDifficultyTier(boss.level);
+  const numEx = Math.max(
+    2,
+    Math.min(opts.numEx != null ? opts.numEx : tier.numEx, allExercises.length),
+  );
   const counterT = COUNTER_TYPE[boss.type];
-  const counterCount = Math.ceil((tier.numEx * 2) / 3);
-  const otherCount = tier.numEx - counterCount;
+  const counterCount = Math.ceil((numEx * 2) / 3);
+  const otherCount = numEx - counterCount;
   const counterPool = allExercises.filter((e) => e.type === counterT);
   const otherPool = allExercises.filter((e) => e.type !== counterT);
   const picked = [];

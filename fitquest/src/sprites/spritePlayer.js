@@ -1,5 +1,5 @@
 /**
- * Sprite feuille + atlas JSON (grille type Mugen). Max 12 frames recommandé.
+ * Sprite feuille + atlas JSON (grille type Mugen). Jusqu’à 64 frames par ligne (plafond sécurité).
  * Fallback : animation CSS sur la boîte si pas d’asset.
  */
 
@@ -28,6 +28,23 @@ function rowCountFromAtlas(atlas) {
   return maxRow + 1;
 }
 
+/** Dimensions d’une cellule : `frameWidth` / `frameHeight` ou dérivées de `sheetWidth` × `sheetHeight`. */
+function resolveAtlasCellSize(atlas) {
+  const cols = atlas.cols || 4;
+  const sheetRows = rowCountFromAtlas(atlas);
+  const sw = atlas.sheetWidth;
+  const sh = atlas.sheetHeight;
+  if (Number.isFinite(sw) && Number.isFinite(sh) && sw > 0 && sh > 0) {
+    return { cols, sheetRows, frameWidth: sw / cols, frameHeight: sh / sheetRows };
+  }
+  const fw = atlas.frameWidth;
+  const fh = atlas.frameHeight;
+  if (Number.isFinite(fw) && Number.isFinite(fh) && fw > 0 && fh > 0) {
+    return { cols, sheetRows, frameWidth: fw, frameHeight: fh };
+  }
+  return null;
+}
+
 export async function loadAtlas(basePath) {
   if (atlasCache.has(basePath)) return atlasCache.get(basePath);
   try {
@@ -48,7 +65,7 @@ export async function loadAtlas(basePath) {
  * @param {string} initialAnim
  */
 export async function mountBossSprite(host, spriteKey = 'default', initialAnim = 'idle') {
-  if (!host) return { play: () => {}, destroy: () => {} };
+  if (!host) return { play: () => {}, destroy: () => {}, listAnimations: () => [] };
   const prefix = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
   const base = `${prefix}sprites/${spriteKey}`.replace(/([^:])\/{2,}/g, '$1/');
   const atlas = await loadAtlas(base);
@@ -56,7 +73,8 @@ export async function mountBossSprite(host, spriteKey = 'default', initialAnim =
 
   const layer = document.createElement('div');
   layer.className = 'sprite-atlas-layer';
-  if (!atlas || !atlas.frameWidth) {
+  const grid = atlas && resolveAtlasCellSize(atlas);
+  if (!grid) {
     layer.classList.add('sprite-fallback-bob');
     host.prepend(layer);
     return makeFallbackController(layer, host);
@@ -68,19 +86,40 @@ export async function mountBossSprite(host, spriteKey = 'default', initialAnim =
   });
 
   const sheetUrl = `${base}/${atlas.sheet || 'sheet.webp'}`;
-  layer.style.backgroundImage = `url(${sheetUrl})`;
-  layer.style.backgroundRepeat = 'no-repeat';
-  host.prepend(layer);
+  const spriteLayer = document.createElement('div');
+  spriteLayer.className = 'sprite-atlas-layer';
+  spriteLayer.style.backgroundImage = `url(${sheetUrl})`;
+  spriteLayer.style.backgroundRepeat = 'no-repeat';
+  spriteLayer.style.transition = 'none';
+  host.prepend(spriteLayer);
 
-  let displayScale = 1;
-  const cols = atlas.cols || 4;
-  const sheetRows = rowCountFromAtlas(atlas);
+  /** Pas entiers (px écran) : évite la dérive si on arrondit col×largeur d’un coup. */
+  let stepX = 1;
+  let stepY = 1;
+  const { cols, sheetRows, frameWidth, frameHeight } = grid;
+  let current = initialAnim;
+  let frame = 0;
+  let last = performance.now();
+
+  function setLayerFrame(frameIndex, animName) {
+    const spec = atlas.animations[animName];
+    if (!spec) return;
+    const row = spec.row ?? 0;
+    const col = frameIndex % cols;
+    const x = -col * stepX;
+    const y = -row * stepY;
+    spriteLayer.style.backgroundPosition = `${x}px ${y}px`;
+  }
 
   function syncDisplayScale() {
-    displayScale = computeDisplayScale(host, atlas.frameWidth, atlas.frameHeight);
-    layer.style.width = `${atlas.frameWidth * displayScale}px`;
-    layer.style.height = `${atlas.frameHeight * displayScale}px`;
-    layer.style.backgroundSize = `${atlas.frameWidth * cols * displayScale}px ${atlas.frameHeight * sheetRows * displayScale}px`;
+    const scale = computeDisplayScale(host, frameWidth, frameHeight);
+    stepX = Math.max(1, Math.round(frameWidth * scale));
+    stepY = Math.max(1, Math.round(frameHeight * scale));
+    spriteLayer.style.transition = 'none';
+    spriteLayer.style.width = `${stepX}px`;
+    spriteLayer.style.height = `${stepY}px`;
+    spriteLayer.style.backgroundSize = `${cols * stepX}px ${sheetRows * stepY}px`;
+    setLayerFrame(frame, current);
   }
 
   syncDisplayScale();
@@ -91,31 +130,59 @@ export async function mountBossSprite(host, spriteKey = 'default', initialAnim =
     resizeObs.observe(host);
   }
 
-  let current = initialAnim;
-  let frame = 0;
-  let last = performance.now();
   let playing = true;
   let rafId = 0;
+  let chainReturnTimer = null;
+
+  function clearChainReturnTimer() {
+    if (chainReturnTimer != null) {
+      clearTimeout(chainReturnTimer);
+      chainReturnTimer = null;
+    }
+  }
 
   function draw() {
     const spec = atlas.animations[current];
     if (!spec) return;
-    const row = spec.row ?? 0;
-    const maxF = Math.min(spec.frames || 1, 12);
+    const maxF = Math.min(Math.max(1, spec.frames || 1), 64);
     const fps = spec.fps || 8;
     const now = performance.now();
     if (now - last >= 1000 / fps) {
       last = now;
-      frame += 1;
-      if (frame >= maxF) {
-        if (spec.loop) frame = 0;
-        else frame = maxF - 1;
+      let newF = frame + 1;
+      if (newF >= maxF) {
+        const nextLoop = spec.chainAfterLoop;
+        if (spec.loop && typeof nextLoop === 'string' && atlas.animations[nextLoop]) {
+          clearChainReturnTimer();
+          current = nextLoop;
+          frame = 0;
+          setLayerFrame(0, current);
+          return;
+        }
+        newF = spec.loop ? 0 : maxF - 1;
+      }
+      if (newF !== frame) {
+        setLayerFrame(newF, current);
+        frame = newF;
+        const s2 = atlas.animations[current];
+        const maxS2 = Math.min(Math.max(1, s2?.frames || 1), 64);
+        const ret =
+          s2 && !s2.loop && typeof s2.chainReturn === 'string' ? s2.chainReturn : null;
+        if (ret && atlas.animations[ret] && frame === maxS2 - 1) {
+          clearChainReturnTimer();
+          const frameDur = 1000 / Math.max(1, s2.fps || 8);
+          chainReturnTimer = window.setTimeout(() => {
+            chainReturnTimer = null;
+            if (!playing || !atlas.animations[ret]) return;
+            current = ret;
+            frame = 0;
+            setLayerFrame(0, current);
+            last = performance.now();
+          }, frameDur);
+        }
+        return;
       }
     }
-    const col = frame % cols;
-    const x = -col * atlas.frameWidth * displayScale;
-    const y = -row * atlas.frameHeight * displayScale;
-    layer.style.backgroundPosition = `${x}px ${y}px`;
   }
 
   function loop() {
@@ -127,33 +194,48 @@ export async function mountBossSprite(host, spriteKey = 'default', initialAnim =
   rafId = requestAnimationFrame(loop);
 
   return {
+    listAnimations() {
+      return Object.keys(atlas.animations || {});
+    },
+    /** @returns {boolean} false si l’anim n’existe pas dans l’atlas */
     play(name) {
-      if (!atlas.animations[name]) return;
+      if (!atlas.animations[name]) return false;
+      clearChainReturnTimer();
       current = name;
       frame = 0;
       last = performance.now();
+      spriteLayer.style.transition = 'none';
+      setLayerFrame(0, current);
+      return true;
     },
     destroy() {
       playing = false;
+      clearChainReturnTimer();
       if (rafId) cancelAnimationFrame(rafId);
       if (resizeObs) resizeObs.disconnect();
-      layer.remove();
+      spriteLayer.remove();
     },
   };
 }
 
 function makeFallbackController(layer, host) {
   return {
+    listAnimations() {
+      return [];
+    },
     play(name) {
       layer.classList.remove('sprite-anim-hit', 'sprite-anim-attack');
       if (name === 'hit') {
         layer.classList.add('sprite-anim-hit');
         setTimeout(() => layer.classList.remove('sprite-anim-hit'), 350);
+        return true;
       }
       if (name === 'attack') {
         layer.classList.add('sprite-anim-attack');
         setTimeout(() => layer.classList.remove('sprite-anim-attack'), 650);
+        return true;
       }
+      return name === 'idle' || name === 'fury' || name === 'fury_after';
     },
     destroy() {
       layer.remove();

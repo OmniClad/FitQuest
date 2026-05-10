@@ -30,6 +30,9 @@ import {
   renderPreSessionView,
   renderSessionView,
   updateDamagePreview,
+  resetPresessionDraft,
+  handlePresessionAction,
+  handlePresessionLaunchInteraction,
 } from './ui/renderSession.js';
 import { renderAdminPanel } from './ui/renderAdmin.js';
 import { renderQuestsView } from './ui/renderQuests.js';
@@ -41,7 +44,11 @@ const audioBus = createAudioBus();
 document.addEventListener(
   'click',
   (e) => {
-    if (e.target.closest('button, .action-btn, .btn, .session-back, .exercise-card, .zone-banner-action, .equip-slot')) {
+    if (
+      e.target.closest(
+        'button, .action-btn, .btn, .session-back, .exercise-card, .zone-banner-action, .equip-slot, .presession-launch-pill',
+      )
+    ) {
       gameEvents.emit('ui_click');
     }
   },
@@ -209,6 +216,7 @@ $('saveSettings').addEventListener('click',()=>{
 $('resetGame').addEventListener('click',()=>{if(confirm('Êtes-vous sûr ? Toute votre progression sera perdue.')){resetState();location.reload();}});
 $('btnStartSession').addEventListener('click',()=>{
   if(state.player.recovering){startRecoverySession();return;}
+  resetPresessionDraft();
   showView('pre-session');
 });
 
@@ -239,11 +247,16 @@ document.querySelectorAll('.session-back').forEach(b=>{
   });
 });
 
-$('btnLaunchSession').addEventListener('click',()=>{
-  const proposed=JSON.parse($('btnLaunchSession').dataset.proposed||'[]');
-  const bossId=$('btnLaunchSession').dataset.bossId;
+$('viewPreSession').addEventListener('click',(e)=>{
+  const actBtn=e.target.closest('[data-presession-action]');
+  if(actBtn){handlePresessionAction(actBtn.dataset.presessionAction);return;}
+  const launch=e.target.closest('#btnLaunchSession');
+  if(!launch)return;
+  e.preventDefault();
+  const proposed=JSON.parse(launch.dataset.proposed||'[]');
+  const bossId=launch.dataset.bossId;
   if(proposed.length===0){showToast('⚠ Aucun exercice proposé');return;}
-  startSession(proposed,bossId);
+  handlePresessionLaunchInteraction(launch,{onCommit:()=>startSession(proposed,bossId)});
 });
 
 ['exSets','exReps','exWeight'].forEach(id=>$(id).addEventListener('input',updateDamagePreview));

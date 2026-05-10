@@ -1,5 +1,10 @@
 import { COMB_BONUS_PER_LEVEL, COUNTER_TYPE, RARITY_VALUE } from '../data/constants.js';
 
+/** Exercice du type que le boss contrôle (triangle Force / Vitesse / Endurance) : moins efficace. */
+export function isWeakMatchup(exerciseType, bossType) {
+  return COUNTER_TYPE[exerciseType] === bossType;
+}
+
 export function xpForNextLevel(level) {
   return 200 * (level + 1);
 }
@@ -27,6 +32,19 @@ export function computeEquipmentBonus(player) {
     }
   });
   return bonus;
+}
+
+/**
+ * Tranche de badge boss (assets boss_badge_1.webp … _5.webp).
+ * 1–25 → 1, 26–50 → 2, 51–75 → 3, 76–99 → 4, 100+ → 5.
+ */
+export function getBossLevelBadgeTier(level) {
+  const lv = Math.max(0, Math.floor(Number(level) || 0));
+  if (lv >= 100) return 5;
+  if (lv >= 76) return 4;
+  if (lv >= 51) return 3;
+  if (lv >= 26) return 2;
+  return 1;
 }
 
 export function getDifficultyTier(level) {
@@ -75,8 +93,11 @@ export function isGoodMatchup(exerciseType, bossType) {
   return COUNTER_TYPE[bossType] === exerciseType;
 }
 
+/** +50 % si le type cible la faiblesse du boss ; −33 % (symétrique) si mauvais matchup. */
 export function matchupMultiplier(exerciseType, bossType) {
-  return isGoodMatchup(exerciseType, bossType) ? 1.5 : 1.0;
+  if (isGoodMatchup(exerciseType, bossType)) return 1.5;
+  if (isWeakMatchup(exerciseType, bossType)) return 1 / 1.5;
+  return 1.0;
 }
 
 /**

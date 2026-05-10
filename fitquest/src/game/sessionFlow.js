@@ -1,8 +1,15 @@
 import { elementMultiplier } from '../data/elements.js';
 import { computeEquipmentBonus, getDifficultyTier, applyXp } from '../core/progression.js';
+import { resetPresessionDraft } from '../ui/renderSession.js';
 import { rollDrops } from '../core/rewards.js';
 import { gameEvents } from '../audio/gameEvents.js';
 import { bumpQuestCounter } from '../core/questEngine.js';
+import { playBossIdleOrFury } from '../ui/renderCombatFx.js';
+
+/** Durée approx. anim. attaque ours (12 img @ 10 ips) avant retour idle / furie. */
+const BOSS_SPRITE_POST_ATTACK_MS = 1250;
+/** Idem après anim. hit seule (ex. sort). */
+const BOSS_SPRITE_POST_HIT_MS = 1250;
 
 /**
  * Flux séance / combat (validation exercices, sorts, fin de combat).
@@ -39,6 +46,7 @@ export function createSessionFlow(deps) {
     if (!bd) return;
     state.boss.current = { ...bd, hp: bd.hp_max, _isRegionalEncounter: true };
     saveState();
+    resetPresessionDraft();
     showView('pre-session');
   }
 
@@ -287,6 +295,12 @@ export function createSessionFlow(deps) {
       const st = getState();
       const ctl = getBossSpriteCtl && getBossSpriteCtl();
       if (ctl && typeof ctl.play === 'function') ctl.play('attack');
+      setTimeout(() => {
+        const st2 = getState();
+        if (st2.boss.current && st2.boss.current.hp > 0) {
+          playBossIdleOrFury(getBossSpriteCtl && getBossSpriteCtl(), st2.boss.current);
+        }
+      }, BOSS_SPRITE_POST_ATTACK_MS);
       gameEvents.emit('boss_attack');
       const dmg = computeBossCounterAttack(st.boss.current);
       st.player.stats.hp_current = Math.max(0, st.player.stats.hp_current - dmg);
@@ -347,6 +361,12 @@ export function createSessionFlow(deps) {
       }
       state.boss.current.hp = Math.max(0, state.boss.current.hp - dmg);
       flashBossPortrait(false);
+      setTimeout(() => {
+        const st = getState();
+        if (st.boss.current && st.boss.current.hp > 0) {
+          playBossIdleOrFury(getBossSpriteCtl && getBossSpriteCtl(), st.boss.current);
+        }
+      }, BOSS_SPRITE_POST_HIT_MS);
       gameEvents.emit('spell_cast');
       showFloatingDmg(`-${dmg}`, 'player-dmg');
       showToast(`✨ ${spell.name} ! <strong>+${dmg} dégâts</strong>`, 3000);

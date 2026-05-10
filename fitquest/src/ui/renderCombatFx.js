@@ -1,5 +1,15 @@
 import { uiCtx } from './renderContext.js';
 
+/** Sous ce seuil de PV (fraction), le sprite joue `fury` s’il existe dans l’atlas, sinon `idle`. */
+const BOSS_FURY_HP_FRAC = 0.35;
+
+export function playBossIdleOrFury(ctl, boss) {
+  if (!ctl || typeof ctl.play !== 'function' || !boss || boss.hp <= 0) return;
+  const pct = boss.hp / Math.max(1, boss.hp_max);
+  if (pct <= BOSS_FURY_HP_FRAC && ctl.play('fury')) return;
+  ctl.play('idle');
+}
+
 export function showFloatingDmg(text, type, anchorId) {
   const $ = uiCtx.$;
   const anchor = anchorId ? $(anchorId) : $('bossPortraitInBanner');

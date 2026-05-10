@@ -1,4 +1,5 @@
 import { createTransitionLayer } from '../scenes/transitionLayer.js';
+import { cancelPresessionLaunchUi } from './renderSession.js';
 
 /**
  * Modales plein écran + navigation entre les vues principales (avec transitions).
@@ -43,6 +44,9 @@ export function createAppShell(deps) {
   let lastScene = 'dashboard';
 
   function applyView(name) {
+    if (lastScene === 'pre-session' && name !== 'pre-session') {
+      cancelPresessionLaunchUi();
+    }
     $('app').style.display = 'none';
     $('viewPreSession').classList.remove('active');
     $('viewSession').classList.remove('active');

@@ -79,8 +79,8 @@ export function createWorldBindings(deps) {
     return getRegionalBossForZone(getCurrentZone(), state.player.defeatedRegionalBosses, catalog.allBosses());
   }
 
-  function generateProposedExercises(boss) {
-    return buildExerciseProposal(boss, catalog.allExercises());
+  function generateProposedExercises(boss, opts) {
+    return buildExerciseProposal(boss, catalog.allExercises(), opts);
   }
 
   return {

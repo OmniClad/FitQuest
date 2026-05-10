@@ -1,26 +1,40 @@
 {
   "sheet": "sheet.webp",
-  "frameWidth": 362,
-  "frameHeight": 362,
-  "cols": 4,
+  "sheetWidth": 2172,
+  "sheetHeight": 905,
+  "cols": 12,
   "animations": {
     "idle": {
       "row": 0,
-      "frames": 4,
+      "frames": 9,
       "fps": 8,
       "loop": true
     },
     "attack": {
       "row": 1,
-      "frames": 4,
+      "frames": 9,
       "fps": 10,
       "loop": false
     },
     "hit": {
       "row": 2,
-      "frames": 4,
+      "frames": 9,
       "fps": 10,
       "loop": false
+    },
+    "fury": {
+      "row": 3,
+      "frames": 9,
+      "fps": 10,
+      "loop": true,
+      "chainAfterLoop": "fury_after"
+    },
+    "fury_after": {
+      "row": 4,
+      "frames": 9,
+      "fps": 10,
+      "loop": false,
+      "chainReturn": "fury"
     }
   }
 }
