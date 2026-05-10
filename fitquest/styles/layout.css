@@ -1,5 +1,5 @@
 
-.app{position:relative;z-index:1;max-width:600px;margin:0 auto;padding:16px;padding-bottom:120px;}
+.app{position:relative;z-index:1;max-width:600px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(120px + env(safe-area-inset-bottom,0px));}
 .app-header{text-align:center;padding:12px 0 20px;border-bottom:1px solid var(--border);margin-bottom:20px;position:relative;}
 .app-header h1{font-family:'Cinzel',serif;font-weight:900;font-size:28px;background:linear-gradient(135deg,var(--gold-bright) 0%,var(--gold) 50%,#A87E1F 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:0.15em;text-shadow:0 0 30px rgba(212,175,55,0.3);}
 .app-header .subtitle{font-size:11px;color:var(--text-dim);letter-spacing:0.2em;margin-top:4px;text-transform:uppercase;}
@@ -80,7 +80,7 @@
 .empty-state{text-align:center;padding:24px 12px;color:var(--text-faint);font-style:italic;font-size:13px;}
 .empty-state .icon{font-size:32px;display:block;margin-bottom:8px;opacity:0.4;}
 
-.action-bar{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(180deg,transparent 0%,var(--bg-deep) 30%);padding:20px 16px max(20px,env(safe-area-inset-bottom));z-index:50;}
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(180deg,transparent 0%,var(--bg-deep) 30%);padding:20px 16px max(20px,env(safe-area-inset-bottom,0px));z-index:50;}
 .action-bar-inner{max-width:600px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .btn{font-family:'Cinzel',serif;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;border:none;border-radius:10px;padding:14px 12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:var(--text);transition:all 0.15s;}
 .btn:active{transform:scale(0.96);}
@@ -92,7 +92,7 @@
 .btn-gold{background:linear-gradient(135deg,#A87E1F 0%,var(--gold) 50%,var(--gold-bright) 100%);color:#1A1228;border:1px solid var(--gold-bright);text-shadow:0 1px 0 rgba(255,255,255,0.3);}
 .btn-success{background:linear-gradient(135deg,#15803D 0%,var(--success) 100%);color:#FFF;border:1px solid #4ADE80;}
 
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:100;display:none;align-items:center;justify-content:center;padding:20px;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:100;display:none;align-items:center;justify-content:center;padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(20px + env(safe-area-inset-bottom,0px));}
 .modal-overlay.active{display:flex;}
 .modal{background:linear-gradient(135deg,var(--bg-card) 0%,var(--bg-mid) 100%);border:2px solid var(--gold);border-radius:16px;padding:28px 24px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.8),0 0 60px rgba(212,175,55,0.2);position:relative;animation:modalIn 0.3s ease;max-height:90vh;overflow-y:auto;}
 .modal.victory-modal{border-color:var(--success);box-shadow:0 20px 60px rgba(0,0,0,0.8),0 0 60px rgba(34,197,94,0.4);}
@@ -109,5 +109,5 @@
 .modal-footer{display:flex;gap:8px;justify-content:center;}
 .modal-footer .btn{flex:1;font-size:12px;padding:12px;}
 
-.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);background:linear-gradient(135deg,var(--bg-card) 0%,var(--bg-mid) 100%);border:1px solid var(--gold);color:var(--gold-bright);padding:12px 20px;border-radius:30px;font-size:13px;font-family:'Cinzel',serif;letter-spacing:0.05em;z-index:200;box-shadow:0 10px 30px rgba(0,0,0,0.5);transition:transform 0.3s ease;max-width:90%;text-align:center;}
+.toast{position:fixed;top:calc(20px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%) translateY(-100px);background:linear-gradient(135deg,var(--bg-card) 0%,var(--bg-mid) 100%);border:1px solid var(--gold);color:var(--gold-bright);padding:12px 20px;border-radius:30px;font-size:13px;font-family:'Cinzel',serif;letter-spacing:0.05em;z-index:200;box-shadow:0 10px 30px rgba(0,0,0,0.5);transition:transform 0.3s ease;max-width:90%;text-align:center;}
 .toast.show{transform:translateX(-50%) translateY(0);}

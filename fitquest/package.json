@@ -4,13 +4,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "cap:sync": "cap sync",
-    "build:native": "vite build && cap sync",
-    "open:ios": "cap open ios",
-    "open:android": "cap open android"
+    "dev": "bash scripts/node22.sh node_modules/vite/bin/vite.js",
+    "build": "bash scripts/node22.sh node_modules/vite/bin/vite.js build",
+    "preview": "bash scripts/node22.sh node_modules/vite/bin/vite.js preview",
+    "cap:sync": "bash scripts/node22.sh node_modules/@capacitor/cli/bin/capacitor sync",
+    "build:native": "npm run build && npm run cap:sync",
+    "build:apk": "bash scripts/build-android-debug.sh",
+    "open:ios": "bash scripts/node22.sh node_modules/@capacitor/cli/bin/capacitor open ios",
+    "open:android": "bash scripts/node22.sh node_modules/@capacitor/cli/bin/capacitor open android"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",

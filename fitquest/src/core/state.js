@@ -67,6 +67,11 @@ export function defaultState() {
     boss: { current: null, defeated: [] },
     sessions: [],
     session_current: null,
+    settings: {
+      audio: {
+        masterVolume: 1,
+      },
+    },
     meta: {
       total_sessions: 0,
       total_bosses: 0,

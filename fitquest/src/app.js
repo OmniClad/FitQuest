@@ -56,6 +56,21 @@ document.addEventListener(
 );
 document.addEventListener('touchend', () => audioBus.unlockAudio(), { passive: true });
 
+function bindAppAudioLifecycle() {
+  const pauseAudio = () => audioBus.pauseAll();
+  const resumeAudio = () => audioBus.resumeAppAudio();
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) pauseAudio();
+    else resumeAudio();
+  });
+  window.addEventListener('pagehide', pauseAudio);
+  window.addEventListener('blur', pauseAudio);
+  window.addEventListener('focus', resumeAudio);
+}
+
+bindAppAudioLifecycle();
+
 /* STATE */
 let state=null;
 const catalog=createGameCatalog(()=>state);
@@ -68,6 +83,23 @@ function saveState(){
 function resetState(){
   resetGame();
   state=null;
+}
+function getAppVolume(){
+  return Math.round(((state?.settings?.audio?.masterVolume ?? 1) * 100));
+}
+function renderAppVolumeSetting(){
+  const volume = getAppVolume();
+  $('appVolumeSlider').value = String(volume);
+  $('appVolumeValue').textContent = `${volume}%`;
+}
+function applyAppVolume(volumePercent, { persist = false } = {}){
+  const volume = Math.min(100, Math.max(0, Number(volumePercent) || 0));
+  if (!state.settings) state.settings = {};
+  if (!state.settings.audio) state.settings.audio = {};
+  state.settings.audio.masterVolume = volume / 100;
+  audioBus.setMasterVolume(state.settings.audio.masterVolume);
+  renderAppVolumeSetting();
+  if (persist) saveState();
 }
 
 const world=createWorldBindings({getState:()=>state,catalog});
@@ -190,8 +222,10 @@ function boot(){
   state=loadGame();
   if(!state||!state.player||!state.player.name){
     state=defaultState();state.meta.created_at=new Date().toISOString();
+    audioBus.setMasterVolume(state.settings.audio.masterVolume);
     openModal('welcomeModal');setTimeout(()=>$('nameInput').focus(),300);
   }else{
+    audioBus.setMasterVolume(state.settings.audio.masterVolume);
     reconcileQuestState(state, null);
     if(state.session_current)showView('session');else showView('dashboard');
   }
@@ -205,8 +239,9 @@ $('confirmName').addEventListener('click',()=>{
   showToast(`⚔ Bienvenue, ${name} !`);
 });
 $('nameInput').addEventListener('keydown',(e)=>{if(e.key==='Enter')$('confirmName').click();});
-$('settingsBtn').addEventListener('click',()=>{$('renameInput').value=state.player.name;openModal('settingsModal');});
+$('settingsBtn').addEventListener('click',()=>{$('renameInput').value=state.player.name;renderAppVolumeSetting();openModal('settingsModal');});
 $('cancelSettings').addEventListener('click',()=>closeModal('settingsModal'));
+$('appVolumeSlider').addEventListener('input',(e)=>applyAppVolume(e.target.value,{persist:true}));
 $('saveSettings').addEventListener('click',()=>{
   const newName=$('renameInput').value.trim();
   if(newName.length<2){showToast('⚠ Au moins 2 caractères');return;}

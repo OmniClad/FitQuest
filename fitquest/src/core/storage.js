@@ -61,6 +61,10 @@ export function migrateSave(s) {
   s.boss = Object.assign({}, def.boss, s.boss || {});
   s.sessions = s.sessions || [];
   s.session_current = s.session_current || null;
+  s.settings = Object.assign({}, def.settings, s.settings || {});
+  s.settings.audio = Object.assign({}, def.settings.audio, s.settings.audio || {});
+  if (typeof s.settings.audio.masterVolume !== 'number') s.settings.audio.masterVolume = def.settings.audio.masterVolume;
+  s.settings.audio.masterVolume = Math.min(1, Math.max(0, s.settings.audio.masterVolume));
   s.meta = Object.assign({}, def.meta, s.meta || {});
   delete s.combat_current;
   if (typeof s.player.stepBalance !== 'number') s.player.stepBalance = def.player.stepBalance ?? 5000;

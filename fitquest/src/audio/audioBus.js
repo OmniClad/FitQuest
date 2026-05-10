@@ -8,9 +8,13 @@ function assetUrl(path) {
 
 let unlocked = false;
 let ctx = null;
+let appAudioSuspended = false;
 
-const sfxGainRef = { value: 0.35 };
-const bgmGainRef = { value: 0.22 };
+const DEFAULT_SFX_GAIN = 0.35;
+const DEFAULT_BGM_GAIN = 0.22;
+const masterGainRef = { value: 1 };
+const sfxGainRef = { value: DEFAULT_SFX_GAIN };
+const bgmGainRef = { value: DEFAULT_BGM_GAIN };
 
 const audioCache = new Map();
 const bgmEl = typeof Audio !== 'undefined' ? new Audio() : null;
@@ -57,6 +61,7 @@ export function unlockAudio() {
 }
 
 function playFileOrBeep(url, volume, beepFn) {
+  if (appAudioSuspended) return;
   unlockAudio();
   if (!url || typeof Audio === 'undefined') {
     beepFn();
@@ -78,6 +83,7 @@ function playFileOrBeep(url, volume, beepFn) {
 
 export function createAudioBus() {
   const unsubscribers = [];
+  let currentSceneKey = null;
 
   unsubscribers.push(
     gameEvents.on('ui_click', () => {
@@ -124,6 +130,8 @@ export function createAudioBus() {
   );
 
   function playSceneBgm(sceneKey) {
+    currentSceneKey = sceneKey;
+    if (appAudioSuspended) return;
     unlockAudio();
     const path = SCENE_BGM[sceneKey];
     if (!bgmEl || !path) return;
@@ -135,19 +143,51 @@ export function createAudioBus() {
     bgmEl.play().catch(() => {});
   }
 
+  function pauseAll() {
+    appAudioSuspended = true;
+    if (bgmEl) bgmEl.pause();
+    audioCache.forEach((a) => {
+      a.pause();
+      a.currentTime = 0;
+    });
+    if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
+  }
+
+  function resumeAppAudio() {
+    appAudioSuspended = false;
+    if (!unlocked) return;
+    const c = ensureCtx();
+    if (c && c.state === 'suspended') c.resume().catch(() => {});
+    if (currentSceneKey) playSceneBgm(currentSceneKey);
+  }
+
   function dispose() {
     unsubscribers.forEach((u) => u());
+    pauseAll();
   }
 
   return {
     unlockAudio,
     playSceneBgm,
+    pauseAll,
+    resumeAppAudio,
     setSfxVolume(v) {
       sfxGainRef.value = v;
     },
     setBgmVolume(v) {
       bgmGainRef.value = v;
       if (bgmEl) bgmEl.volume = v;
+    },
+    setMasterVolume(v) {
+      const next = Number(v);
+      const master = Math.min(1, Math.max(0, Number.isFinite(next) ? next : 1));
+      masterGainRef.value = master;
+      sfxGainRef.value = DEFAULT_SFX_GAIN * master;
+      bgmGainRef.value = DEFAULT_BGM_GAIN * master;
+      if (bgmEl) bgmEl.volume = bgmGainRef.value;
+    },
+    getMasterVolume() {
+      return masterGainRef.value;
     },
     dispose,
   };
