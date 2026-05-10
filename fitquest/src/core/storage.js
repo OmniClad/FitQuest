@@ -1,5 +1,6 @@
 import { STORAGE_KEY, VERSION } from '../data/constants.js';
 import { defaultState } from './state.js';
+import { initQuestProgress } from './questEngine.js';
 
 /**
  * Normalise une sauvegarde brute (anciens formats, champs manquants).
@@ -62,6 +63,18 @@ export function migrateSave(s) {
   s.session_current = s.session_current || null;
   s.meta = Object.assign({}, def.meta, s.meta || {});
   delete s.combat_current;
+  if (typeof s.player.stepBalance !== 'number') s.player.stepBalance = def.player.stepBalance ?? 5000;
+  if (!s.quests) {
+    s.quests = {
+      completedIds: [],
+      counters: { sessions_complete: 0, bosses_defeated: 0, steps_total: 0 },
+      visitedZoneIds: [],
+    };
+  }
+  if (!Array.isArray(s.quests.completedIds)) s.quests.completedIds = [];
+  if (!s.quests.counters) s.quests.counters = { sessions_complete: 0, bosses_defeated: 0, steps_total: 0 };
+  if (!Array.isArray(s.quests.visitedZoneIds)) s.quests.visitedZoneIds = [];
+  initQuestProgress(s);
   return s;
 }
 

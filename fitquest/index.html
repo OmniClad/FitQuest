@@ -40,6 +40,10 @@
       <button class="btn btn-secondary" id="btnDrinkPotionDash" style="font-size:11px;padding:10px;border-color:var(--success);color:var(--success);">🧪 Potion (<span id="dashPotionCount">0</span>)</button>
       <button class="btn btn-secondary" id="btnDrinkEtherDash" style="font-size:11px;padding:10px;border-color:#3B82F6;color:#3B82F6;">💧 Éther (<span id="dashEtherCount">0</span>)</button>
     </div>
+    <div class="steps-dash-row">
+      <span>🚶 <strong id="dashStepBalance">0</strong> pas</span>
+      <button type="button" class="btn btn-secondary" id="btnSyncSteps">Sync pas</button>
+    </div>
   </div>
 
   <div id="regionalBossSlot"></div>
@@ -142,6 +146,14 @@
   </div>
 </div>
 
+<div class="session-view" id="viewQuests">
+  <div class="session-header">
+    <button class="session-back" data-back="dashboard">×</button>
+    <div class="session-title">📜 Quêtes</div>
+  </div>
+  <div id="questsContent" style="padding:14px;"></div>
+</div>
+
 <div class="session-view" id="viewAdmin">
   <div class="session-header">
     <button class="session-back" data-back="dashboard">×</button>
@@ -209,6 +221,7 @@
 <div class="action-bar" id="actionBar" style="display:none;">
   <div class="action-bar-inner">
     <button class="btn btn-primary" id="btnStartSession">Commencer</button>
+    <button class="btn btn-secondary" id="btnQuests">📜 Quêtes</button>
     <button class="btn btn-secondary" id="btnInventory">🎒 Hub</button>
     <button class="btn btn-secondary" id="btnAdmin">⚙ Admin</button>
   </div>

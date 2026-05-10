@@ -1,0 +1,8 @@
+{
+  "appId": "com.wayzdigital.fitquest",
+  "appName": "FitQuest",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

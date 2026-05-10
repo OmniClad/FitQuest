@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FitQuest</string>
+    <string name="title_activity_main">FitQuest</string>
+    <string name="package_name">com.wayzdigital.fitquest</string>
+    <string name="custom_url_scheme">com.wayzdigital.fitquest</string>
+</resources>

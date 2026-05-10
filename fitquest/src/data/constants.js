@@ -1,7 +1,7 @@
 /** Persistance, rareté, économie et labels UI (aucune logique de jeu). */
 
 export const STORAGE_KEY = 'fitquest_save_v1';
-export const VERSION = '3.0.0';
+export const VERSION = '3.1.0';
 
 export const RARITY_COLORS = {
   common: '#9CA3AF',

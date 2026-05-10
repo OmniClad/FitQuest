@@ -1,4 +1,4 @@
-import { COMB_BONUS_PER_LEVEL, COUNTER_TYPE } from '../data/constants.js';
+import { COMB_BONUS_PER_LEVEL, COUNTER_TYPE, RARITY_VALUE } from '../data/constants.js';
 
 export function xpForNextLevel(level) {
   return 200 * (level + 1);
@@ -34,6 +34,41 @@ export function getDifficultyTier(level) {
   if (level <= 30) return { tier: 'medium', numEx: 4, sets: 3, reps: 12, seconds: 40 };
   if (level <= 50) return { tier: 'hard', numEx: 5, sets: 4, reps: 14, seconds: 50 };
   return { tier: 'extreme', numEx: 6, sets: 4, reps: 16, seconds: 60 };
+}
+
+const TIER_RANK = { easy: 1, medium: 2, hard: 3, extreme: 4 };
+
+/**
+ * Score 1–10 pour l’UI (pré-séance).
+ * @param {object} boss
+ * @param {{ tier: string, numEx: number }} tier
+ */
+export function getDifficultyScore(boss, tier) {
+  const tr = TIER_RANK[tier.tier] || 2;
+  const lvl = Math.min(10, Math.max(1, Math.round(boss.level / 8)));
+  const rarityBonus = Math.min(3, Math.floor((RARITY_VALUE[boss.rarity] || 25) / 100));
+  const hpFactor = Math.min(2, Math.floor((boss.hp_max || 100) / 400));
+  const raw = tr * 1.4 + lvl * 0.35 + rarityBonus + hpFactor * 0.4 + tier.numEx * 0.15;
+  return Math.max(1, Math.min(10, Math.round(raw)));
+}
+
+/**
+ * Durée estimée (minutes) pour le programme proposé.
+ * @param {Array<{ unit?: string }>} exercises
+ * @param {{ sets: number, reps: number, seconds: number, numEx: number }} tier
+ * @param {{ secPerRep?: number, restBetweenExSec?: number }} [opts]
+ */
+export function estimateSessionMinutes(exercises, tier, opts = {}) {
+  const secPerRep = opts.secPerRep ?? 4;
+  const rest = opts.restBetweenExSec ?? 25;
+  let sec = 0;
+  exercises.forEach((ex) => {
+    const vol = ex.unit === 'seconds' ? tier.seconds : tier.reps;
+    const perSet = ex.unit === 'seconds' ? vol : vol * secPerRep;
+    sec += tier.sets * perSet;
+  });
+  sec += Math.max(0, exercises.length - 1) * rest;
+  return Math.max(1, Math.round(sec / 60));
 }
 
 export function isGoodMatchup(exerciseType, bossType) {

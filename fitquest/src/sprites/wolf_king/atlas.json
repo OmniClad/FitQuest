@@ -1,0 +1,26 @@
+{
+  "sheet": "sheet.webp",
+  "frameWidth": 362,
+  "frameHeight": 362,
+  "cols": 4,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 8,
+      "loop": true
+    },
+    "attack": {
+      "row": 1,
+      "frames": 4,
+      "fps": 10,
+      "loop": false
+    },
+    "hit": {
+      "row": 2,
+      "frames": 4,
+      "fps": 10,
+      "loop": false
+    }
+  }
+}

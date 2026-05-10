@@ -53,6 +53,16 @@ export function defaultState() {
         spells: [],
         disabledIds: [],
       },
+      stepBalance: 5000,
+    },
+    quests: {
+      completedIds: [],
+      counters: {
+        sessions_complete: 0,
+        bosses_defeated: 0,
+        steps_total: 0,
+      },
+      visitedZoneIds: [],
     },
     boss: { current: null, defeated: [] },
     sessions: [],

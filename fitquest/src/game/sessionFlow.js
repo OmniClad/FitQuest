@@ -1,0 +1,451 @@
+import { elementMultiplier } from '../data/elements.js';
+import { computeEquipmentBonus, getDifficultyTier, applyXp } from '../core/progression.js';
+import { rollDrops } from '../core/rewards.js';
+import { gameEvents } from '../audio/gameEvents.js';
+import { bumpQuestCounter } from '../core/questEngine.js';
+
+/**
+ * Flux séance / combat (validation exercices, sorts, fin de combat).
+ * @param {object} deps
+ */
+export function createSessionFlow(deps) {
+  const {
+    getState,
+    catalog,
+    $,
+    showToast,
+    closeModal,
+    saveState,
+    showView,
+    shuffle,
+    flashBossPortrait,
+    showFloatingDmg,
+    shakeScreen,
+    renderSessionView,
+    showSummaryModal,
+    showRecoverySummaryModal,
+    showVictoryModal,
+    showDefeatModal,
+    getCurrentExerciseId,
+    getBossSpriteCtl,
+    world,
+  } = deps;
+
+  const { computeExerciseDamage, computeBossCounterAttack, generateProposedExercises } = world;
+
+  function startRegionalBossEncounter(bossId) {
+    const state = getState();
+    const bd = catalog.allBosses().find((b) => b.id === bossId);
+    if (!bd) return;
+    state.boss.current = { ...bd, hp: bd.hp_max, _isRegionalEncounter: true };
+    saveState();
+    showView('pre-session');
+  }
+
+  function startSession(exerciseIds, bossId) {
+    const state = getState();
+    if (!state.boss.current || state.boss.current.id !== bossId) {
+      const bd = catalog.allBosses().find((b) => b.id === bossId);
+      state.boss.current = { ...bd, hp: bd.hp_max };
+    }
+    state.player.stats.hp_current = state.player.stats.constitution;
+    const tier = getDifficultyTier(state.boss.current.level);
+    if (typeof state.boss.current.heroSkillUsed !== 'boolean') state.boss.current.heroSkillUsed = false;
+    state.session_current = {
+      startedAt: new Date().toISOString(),
+      exercises: exerciseIds.map((id) => {
+        const ex = catalog.allExercises().find((e) => e.id === id);
+        return {
+          id,
+          name: ex.name,
+          type: ex.type,
+          baseDamage: ex.baseDamage,
+          group: ex.group,
+          hasWeight: ex.hasWeight,
+          unit: ex.unit || 'reps',
+          completed: false,
+          sets: 0,
+          reps: 0,
+          weight: 0,
+          damageDealt: 0,
+          recordBeaten: false,
+        };
+      }),
+      totalDamage: 0,
+      totalReceived: 0,
+      xpEarned: 0,
+      suggestedSets: tier.sets,
+      suggestedReps: tier.reps,
+      suggestedSec: tier.seconds,
+    };
+    saveState();
+    showView('session');
+  }
+
+  function startRecoverySession() {
+    const state = getState();
+    const pool = catalog.allExercises();
+    const proposed = shuffle(pool).slice(0, 3);
+    state.session_current = {
+      startedAt: new Date().toISOString(),
+      isRecovery: true,
+      exercises: proposed.map((ex) => ({
+        id: ex.id,
+        name: ex.name,
+        type: ex.type,
+        baseDamage: ex.baseDamage,
+        group: ex.group,
+        hasWeight: ex.hasWeight,
+        unit: ex.unit || 'reps',
+        completed: false,
+        sets: 0,
+        reps: 0,
+        weight: 0,
+        damageDealt: 0,
+        recordBeaten: false,
+      })),
+      totalDamage: 0,
+      totalReceived: 0,
+      xpEarned: 0,
+      suggestedSets: 2,
+      suggestedReps: 8,
+      suggestedSec: 20,
+    };
+    saveState();
+    showView('session');
+    setTimeout(() => showToast('⚕ Séance de récupération. Termine ces exercices pour revenir avec 50% PV.', 4000), 300);
+  }
+
+  function victory() {
+    const state = getState();
+    const b = state.boss.current;
+    const isRegional = !!b.isRegionalBoss;
+    const xpFromSession = state.session_current ? state.session_current.xpEarned + 30 : 0;
+    const goldMult = isRegional ? 1.5 : 1;
+    state.player.gold += Math.round(b.gold * goldMult);
+    const totalXp = Math.round((b.xp + xpFromSession) * (isRegional ? 1.5 : 1));
+    const levelsGained = applyXp(state, totalXp);
+    state.boss.defeated.push({ id: b.id, date: new Date().toISOString() });
+    state.meta.total_bosses += 1;
+    state.meta.total_sessions += 1;
+    let unlockedZone = null;
+    if (isRegional && !state.player.defeatedRegionalBosses.includes(b.id)) {
+      state.player.defeatedRegionalBosses.push(b.id);
+      const newZone = catalog.allZones().find((z) => z.requiredRegionalBoss === b.id);
+      if (newZone && !state.player.unlockedZones.includes(newZone.id)) {
+        state.player.unlockedZones.push(newZone.id);
+        unlockedZone = newZone;
+      }
+    }
+    const drops = rollDrops(b);
+    if (isRegional) drops.forEach((d) => {
+      d.qty = Math.round(d.qty * 1.5);
+    });
+    drops.forEach((d) => {
+      if (d.type === 'material') state.player.materials[d.id] = (state.player.materials[d.id] || 0) + d.qty;
+      else if (d.type === 'ingredient') state.player.ingredients[d.id] = (state.player.ingredients[d.id] || 0) + d.qty;
+    });
+    state._lastVictory = {
+      isRegional,
+      unlockedZone,
+      goldGain: Math.round(b.gold * goldMult),
+      xpGain: totalXp,
+    };
+    if (state.session_current) {
+      const completed = state.session_current.exercises.filter((e) => e.completed);
+      state.sessions.push({
+        date: state.session_current.startedAt,
+        exercises: completed.map((e) => ({
+          id: e.id,
+          sets: e.sets,
+          reps: e.reps,
+          weight: e.weight,
+          damageDealt: e.damageDealt,
+        })),
+        totalDamage: state.session_current.totalDamage,
+        totalReceived: state.session_current.totalReceived,
+        xpEarned: totalXp,
+        bossId: b.id,
+        bossDefeated: true,
+      });
+      if (state.sessions.length > 20) state.sessions.shift();
+    }
+    state.boss.current = null;
+    state.session_current = null;
+    saveState();
+    bumpQuestCounter(state, 'sessions_complete', 1, showToast);
+    bumpQuestCounter(state, 'bosses_defeated', 1, showToast);
+    saveState();
+    gameEvents.emit('victory');
+    showVictoryModal(b, drops, levelsGained, totalXp);
+  }
+
+  function defeat() {
+    const state = getState();
+    const bossName = state.boss.current ? state.boss.current.name : 'Le boss';
+    state.boss.current = null;
+    state.session_current = null;
+    state.player.stats.hp_current = 0;
+    state.player.recovering = true;
+    saveState();
+    gameEvents.emit('defeat');
+    showDefeatModal(bossName);
+  }
+
+  function confirmExerciseSubmission() {
+    const currentExerciseId = getCurrentExerciseId();
+    const state = getState();
+    if (!currentExerciseId || !state.session_current) return;
+
+    if (state.session_current.isRecovery) {
+      const sets = parseInt($('exSets').value, 10);
+      const reps = parseInt($('exReps').value, 10);
+      if (!sets || sets < 1 || !reps || reps < 1) {
+        showToast('⚠ Indique au moins 1 série et 1 unité');
+        return;
+      }
+      const ex = state.session_current.exercises.find((e) => e.id === currentExerciseId);
+      ex.completed = true;
+      ex.sets = sets;
+      ex.reps = reps;
+      closeModal('exerciseModal');
+      showToast('⚕ Exercice de récupération validé', 2000);
+      saveState();
+      if (state.session_current.exercises.every((e) => e.completed)) {
+        state.player.recovering = false;
+        state.player.stats.hp_current = Math.floor(state.player.stats.constitution * 0.5);
+        state.player.stats.mp_current = Math.floor(state.player.stats.mana * 0.5);
+        state.session_current = null;
+        saveState();
+        showRecoverySummaryModal();
+        return;
+      }
+      renderSessionView();
+      return;
+    }
+
+    const sets = parseInt($('exSets').value, 10);
+    const repsOrSec = parseInt($('exReps').value, 10);
+    const weight = parseFloat($('exWeight').value) || 0;
+    if (!sets || sets < 1 || !repsOrSec || repsOrSec < 1) {
+      showToast('⚠ Indique au moins 1 série et 1 unité');
+      return;
+    }
+    const ex = state.session_current.exercises.find((e) => e.id === currentExerciseId);
+    const exData = catalog.allExercises().find((e) => e.id === currentExerciseId);
+    let recordBeaten = false;
+    if (exData.hasWeight && weight > 0) {
+      const prev = state.player.records[currentExerciseId] || 0;
+      if (weight > prev) {
+        state.player.records[currentExerciseId] = weight;
+        state.player.records_bonus[currentExerciseId] = (state.player.records_bonus[currentExerciseId] || 0) + 5;
+        recordBeaten = true;
+      }
+    }
+    const bonus = computeEquipmentBonus(state.player);
+    const totalSpeed = state.player.stats.agility + (bonus.agility || 0);
+    const critChance = Math.min(40, 5 + totalSpeed * 0.5) / 100;
+    const isCrit = Math.random() < critChance;
+    const skillUsed = !!state.session_current.skillArmed;
+    let damage = computeExerciseDamage(currentExerciseId, sets, repsOrSec, weight, { skill: skillUsed });
+    if (isCrit) {
+      const critMult = Math.min(2.5, 1.4 + totalSpeed * 0.005);
+      damage = Math.round(damage * critMult);
+    }
+    ex.completed = true;
+    ex.sets = sets;
+    ex.reps = repsOrSec;
+    ex.weight = weight;
+    ex.damageDealt = damage;
+    ex.recordBeaten = recordBeaten;
+    state.boss.current.hp = Math.max(0, state.boss.current.hp - damage);
+    state.session_current.totalDamage += damage;
+    state.session_current.xpEarned += 30;
+    if (skillUsed) {
+      state.boss.current.heroSkillUsed = true;
+      state.session_current.skillArmed = false;
+    }
+    state.session_current.spellUsedThisTurn = false;
+    closeModal('exerciseModal');
+    flashBossPortrait(isCrit);
+    showFloatingDmg(`-${damage}${isCrit ? ' !' : ''}`, isCrit ? 'player-crit' : 'player-dmg');
+    let msg = `⚔ ${ex.name} ! <strong>+${damage} dégâts</strong>`;
+    if (isCrit) msg += ' <strong>(CRITIQUE)</strong>';
+    if (skillUsed) msg += ' <strong>⚡</strong>';
+    if (recordBeaten) msg += `<br>🏆 <strong>RECORD BATTU !</strong> +5 dégâts permanents`;
+    showToast(msg, 3500);
+    gameEvents.emit('combat_hit', { crit: isCrit });
+    saveState();
+    const hpPct = (state.boss.current.hp / state.boss.current.hp_max) * 100;
+    if ($('bossHpBar')) $('bossHpBar').style.width = `${hpPct}%`;
+    if ($('bossHpText')) $('bossHpText').textContent = `❤️ ${state.boss.current.hp} / ${state.boss.current.hp_max}`;
+    if (state.boss.current.hp <= 0) {
+      setTimeout(() => victory(), 800);
+      return;
+    }
+    setTimeout(() => {
+      const st = getState();
+      const ctl = getBossSpriteCtl && getBossSpriteCtl();
+      if (ctl && typeof ctl.play === 'function') ctl.play('attack');
+      gameEvents.emit('boss_attack');
+      const dmg = computeBossCounterAttack(st.boss.current);
+      st.player.stats.hp_current = Math.max(0, st.player.stats.hp_current - dmg);
+      st.session_current.totalReceived += dmg;
+      saveState();
+      shakeScreen();
+      showFloatingDmg(`-${dmg}`, 'boss-dmg', 'playerHpBar');
+      showToast(`💥 ${st.boss.current.name} riposte ! −${dmg} PV`, 2000);
+      const playerHpPct = (st.player.stats.hp_current / st.player.stats.constitution) * 100;
+      if ($('playerHpBar')) $('playerHpBar').style.width = `${playerHpPct}%`;
+      if ($('playerHpText')) $('playerHpText').textContent = `${st.player.stats.hp_current} / ${st.player.stats.constitution}`;
+      if (st.player.stats.hp_current <= 0) {
+        setTimeout(() => defeat(), 800);
+        return;
+      }
+      if (
+        st.session_current.exercises.every((e) => e.completed) &&
+        st.boss.current &&
+        st.boss.current.hp > 0
+      ) {
+        regenerateExerciseSet();
+      }
+      renderSessionView();
+    }, 700);
+  }
+
+  function castSpell(slotIdx) {
+    const state = getState();
+    if (!state.session_current || !state.boss.current) return;
+    if (state.session_current.skillArmed || state.session_current.spellUsedThisTurn) {
+      showToast('⚠ Action déjà utilisée ce tour');
+      return;
+    }
+    const spellId = state.player.equippedSpells[slotIdx];
+    if (!spellId) return;
+    const spell = catalog.getSpellById(spellId);
+    if (!spell) {
+      showToast('⚠ Sort introuvable');
+      return;
+    }
+    const mp = state.player.stats.mp_current || 0;
+    if (mp < spell.manaCost) {
+      showToast(`⚠ Manque ${spell.manaCost - mp} MP`);
+      return;
+    }
+    if (!state.boss.current.spellsUsedThisFight) state.boss.current.spellsUsedThisFight = {};
+    if (spell.oncePerCombat && state.boss.current.spellsUsedThisFight[spell.id]) {
+      showToast('⚠ Sort déjà utilisé ce combat');
+      return;
+    }
+    state.player.stats.mp_current = mp - spell.manaCost;
+    state.session_current.spellUsedThisTurn = true;
+    if (spell.oncePerCombat) state.boss.current.spellsUsedThisFight[spell.id] = true;
+    if (spell.effect === 'damage_flat') {
+      let dmg = spell.value || 20;
+      if (spell.element && state.boss.current.element) {
+        dmg = Math.round(dmg * elementMultiplier(spell.element, state.boss.current.element));
+      }
+      state.boss.current.hp = Math.max(0, state.boss.current.hp - dmg);
+      flashBossPortrait(false);
+      gameEvents.emit('spell_cast');
+      showFloatingDmg(`-${dmg}`, 'player-dmg');
+      showToast(`✨ ${spell.name} ! <strong>+${dmg} dégâts</strong>`, 3000);
+      if (state.boss.current.hp <= 0) {
+        saveState();
+        setTimeout(() => victory(), 800);
+        return;
+      }
+    } else if (spell.effect === 'heal_flat') {
+      const before = state.player.stats.hp_current;
+      state.player.stats.hp_current = Math.min(state.player.stats.constitution, before + spell.value);
+      const heal = state.player.stats.hp_current - before;
+      gameEvents.emit('spell_cast');
+      showFloatingDmg(`+${heal}`, 'heal', 'playerHpBar');
+      showToast(`✨ ${spell.name} ! <strong>+${heal} PV</strong>`, 3000);
+    }
+    saveState();
+    renderSessionView();
+  }
+
+  function regenerateExerciseSet() {
+    const state = getState();
+    if (!state.boss.current || !state.session_current) return;
+    const proposed = generateProposedExercises(state.boss.current);
+    state.session_current.exercises = proposed.map((ex) => ({
+      id: ex.id,
+      name: ex.name,
+      type: ex.type,
+      baseDamage: ex.baseDamage,
+      group: ex.group,
+      hasWeight: ex.hasWeight,
+      unit: ex.unit || 'reps',
+      completed: false,
+      sets: 0,
+      reps: 0,
+      weight: 0,
+      damageDealt: 0,
+      recordBeaten: false,
+    }));
+    saveState();
+    showToast("🌀 Nouveau set d'exercices généré ! Le boss tient encore.", 3500);
+  }
+
+  function finishSession() {
+    const state = getState();
+    if (!state.session_current) return;
+    const completed = state.session_current.exercises.filter((e) => e.completed);
+    if (completed.length === 0) {
+      if (!confirm('Aucun exercice complété. Abandonner la séance ?')) return;
+      state.session_current = null;
+      saveState();
+      showView('dashboard');
+      return;
+    }
+    const xpGained = state.session_current.xpEarned + 20;
+    const levelsGained = applyXp(state, xpGained);
+    bumpQuestCounter(state, 'sessions_complete', 1, showToast);
+    state.sessions.push({
+      date: state.session_current.startedAt,
+      exercises: completed.map((e) => ({
+        id: e.id,
+        sets: e.sets,
+        reps: e.reps,
+        weight: e.weight,
+        damageDealt: e.damageDealt,
+      })),
+      totalDamage: state.session_current.totalDamage,
+      totalReceived: state.session_current.totalReceived,
+      xpEarned: xpGained,
+      bossId: state.boss.current.id,
+      bossDefeated: false,
+    });
+    state.meta.total_sessions += 1;
+    if (state.sessions.length > 20) state.sessions.shift();
+    const remainingBoss = state.boss.current ? { ...state.boss.current } : null;
+    const summary = {
+      completed: completed.length,
+      total: state.session_current.exercises.length,
+      totalDamage: state.session_current.totalDamage,
+      totalReceived: state.session_current.totalReceived,
+      xpGained,
+      levelsGained,
+      records: completed.filter((e) => e.recordBeaten).map((e) => e.name),
+      remainingBoss,
+    };
+    state.session_current = null;
+    saveState();
+    showSummaryModal(summary);
+  }
+
+  return {
+    startRegionalBossEncounter,
+    startSession,
+    startRecoverySession,
+    confirmExerciseSubmission,
+    castSpell,
+    regenerateExerciseSet,
+    finishSession,
+    victory,
+    defeat,
+  };
+}
