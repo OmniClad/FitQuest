@@ -1,167 +1,34 @@
-const STORAGE_KEY='fitquest_save_v1';
-const VERSION='3.0.0';
-const RARITY_COLORS={common:'#9CA3AF',rare:'#3B82F6',epic:'#A855F7',legendary:'#F59E0B'};
-const FALLBACK_BOSS={goblin_woods:'👹',wolf_alpha:'🐺',bear_brown:'🐻',witch_woods:'🧙',wolf_king:'🐉',giant_boar:'🐗',cursed_fairy:'🧚',swamp_troll:'🧌',corrupted_dryad:'🌳',default:'🐲'};
-const FALLBACK_WEAPON={sword_rusty:'🗡',axe_woodcutter:'🪓',bow_hunter:'🏹',sword_knight:'⚔',staff_druid:'🪄',default:'⚔️'};
-const FALLBACK_MAT={wood_dark:'🪵',iron_raw:'⚙',silver_fang:'🦷',rune_bone:'🦴',mana_crystal:'💎',default:'🧱'};
-const FALLBACK_ING={moon_herb:'🌿',wolf_blood:'🩸',fairy_tear:'💧',default:'🧪'};
-const TYPE_ICON={force:'💪',agility:'⚡',endurance:'🫁'};
-const TYPE_LABEL={force:'Force',agility:'Vitesse',endurance:'Endurance'};
-const TYPE_CSS={force:'type-force',agility:'type-agility',endurance:'type-endurance'};
-const COUNTER_TYPE={force:'agility',agility:'endurance',endurance:'force'};
-
-/* ============ ÉLÉMENTS ============ */
-const ELEMENTS={
-  fire:{name:'Feu',icon:'🔥',color:'#EF4444'},
-  water:{name:'Eau',icon:'💧',color:'#3B82F6'},
-  wind:{name:'Vent',icon:'🌪️',color:'#10B981'},
-  lightning:{name:'Foudre',icon:'⚡',color:'#FBBF24'},
-  holy:{name:'Sacré',icon:'✨',color:'#FDE68A'},
-  dark:{name:'Sombre',icon:'🌑',color:'#A855F7'}
-};
-// Cycle : Feu > Vent > Foudre > Eau > Feu
-const ELEMENT_COUNTERS={fire:'wind',wind:'lightning',lightning:'water',water:'fire'};
-const ELEMENT_OPTIONS=[['','—']].concat(Object.entries(ELEMENTS).map(([k,v])=>[k,v.icon+' '+v.name]));
-function elementMultiplier(attackerEl,defenderEl){
-  if(!attackerEl||!defenderEl)return 1;
-  if((attackerEl==='holy'&&defenderEl==='dark')||(attackerEl==='dark'&&defenderEl==='holy'))return 1.3;
-  if(ELEMENT_COUNTERS[attackerEl]===defenderEl)return 1.25;
-  if(ELEMENT_COUNTERS[defenderEl]===attackerEl)return 0.75;
-  return 1;
-}
-function elementTag(el){if(!el||!ELEMENTS[el])return '';const e=ELEMENTS[el];return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0.05em;background:${e.color}33;color:${e.color};border:1px solid ${e.color};">${e.icon} ${e.name}</span>`;}
-const RARITY_VALUE={common:25,rare:100,epic:250,legendary:500};
-const UPGRADE_COST={common:200,rare:400,epic:800};
-const RARITY_ORDER=['common','rare','epic','legendary'];
-const POTION_PRICE=50;
-const SELL_MATERIAL={common:5,rare:15,epic:40,legendary:100};
-const SELL_INGREDIENT={common:7,rare:20,epic:50,legendary:125};
-const MAX_COMB_LEVEL=5;
-const COMB_BONUS_PER_LEVEL=0.2;
-const SLOT_LABEL={weapon_main:'Arme principale',weapon_secondary:'Arme secondaire',armor:'Plastron',helmet:'Casque',legs:'Jambières',cape:'Cape',accessory_1:'Accessoire',accessory_2:'Accessoire'};
-
-const GAME_DATA={
-  weapons:[
-    {id:'sword_rusty',name:'Épée Rouillée',rarity:'common',icon:'broadsword',stats:{force:5},slot:'weapon_main',desc:'Une lame qui a connu mille batailles.'},
-    {id:'axe_woodcutter',name:'Hache de Bûcheron',rarity:'common',icon:'battle-axe',stats:{force:6},slot:'weapon_main',desc:'Faite pour le bois, redoutable contre les chairs molles.'},
-    {id:'bow_hunter',name:'Arc du Chasseur',rarity:'rare',icon:'pocket-bow',stats:{force:8,agility:3},slot:'weapon_secondary',desc:'L\'arme silencieuse des rôdeurs.'},
-    {id:'sword_knight',name:'Lame de Chevalier',rarity:'rare',icon:'crossed-swords',stats:{force:12},slot:'weapon_main',desc:'Le serment d\'un noble repose sur cette lame.'},
-    {id:'staff_druid',name:'Bâton du Druide',rarity:'epic',icon:'wood-stick',stats:{force:5,constitution:10},slot:'weapon_main',desc:'Imprégné de la sagesse des anciens.'}
-  ],
-  materials:[
-    {id:'wood_dark',name:'Bois sombre',rarity:'common',icon:'wood-pile',desc:'Bois noirci par les ombres de la forêt.'},
-    {id:'iron_raw',name:'Fer brut',rarity:'common',icon:'metal-bar',desc:'Lourd et tranchant à l\'état brut.'},
-    {id:'silver_fang',name:'Crocs argentés',rarity:'rare',icon:'animal-skull',desc:'Crocs prélevés sur des bêtes féroces.'},
-    {id:'rune_bone',name:'Os runique',rarity:'rare',icon:'bone-knife',desc:'Os gravé de symboles anciens.'},
-    {id:'mana_crystal',name:'Cristal de mana',rarity:'epic',icon:'crystal-cluster',desc:'Concentré pur d\'énergie magique.'}
-  ],
-  ingredients:[
-    {id:'moon_herb',name:'Herbe lunaire',rarity:'common',icon:'three-leaves',desc:'Pousse uniquement les nuits sans lune.'},
-    {id:'wolf_blood',name:'Sang de loup',rarity:'rare',icon:'water-drop',desc:'Encore chaud et empli de fureur.'},
-    {id:'fairy_tear',name:'Larme de fée',rarity:'epic',icon:'crystal-shine',desc:'Cristallise les rêves en pouvoir.'}
-  ],
-  bosses:[
-    {id:'goblin_woods',name:'Gobelin du Bois',level:2,rarity:'common',type:'agility',element:'wind',icon:'goblin-head',hp_max:80,attack:8,defense:3,gold:12,xp:80,desc:'Petit, fourbe et puant.',region:'foret',drops:[{type:'material',id:'wood_dark',chance:0.7,qty:[1,2]},{type:'ingredient',id:'moon_herb',chance:0.3,qty:[1,1]}]},
-    {id:'wolf_alpha',name:'Loup Alpha',level:5,rarity:'common',type:'agility',element:'wind',icon:'wolf-howl',hp_max:120,attack:14,defense:5,gold:20,xp:150,desc:'Le chef de la meute hurle dans la nuit.',region:'foret',drops:[{type:'material',id:'wood_dark',chance:0.5,qty:[1,2]},{type:'material',id:'silver_fang',chance:0.4,qty:[1,1]},{type:'ingredient',id:'wolf_blood',chance:0.3,qty:[1,1]}]},
-    {id:'bear_brown',name:'Ours Brun',level:8,rarity:'rare',type:'force',element:'wind',icon:'bear-head',hp_max:200,attack:22,defense:10,gold:35,xp:250,desc:'Massif. Lent. Dévastateur.',region:'foret',drops:[{type:'material',id:'iron_raw',chance:0.6,qty:[1,2]},{type:'material',id:'silver_fang',chance:0.3,qty:[1,1]},{type:'ingredient',id:'moon_herb',chance:0.4,qty:[1,2]}]},
-    {id:'witch_woods',name:'Sorcier des Bois',level:12,rarity:'rare',type:'endurance',element:'dark',icon:'wizard-face',hp_max:280,attack:30,defense:8,gold:50,xp:400,desc:'Ses incantations font frissonner les arbres.',region:'foret',drops:[{type:'material',id:'rune_bone',chance:0.6,qty:[1,2]},{type:'material',id:'mana_crystal',chance:0.2,qty:[1,1]},{type:'ingredient',id:'fairy_tear',chance:0.2,qty:[1,1]}]},
-    {id:'wolf_king',name:'Roi des Loups',level:15,rarity:'epic',type:'force',element:'wind',icon:'wolverine-claws',hp_max:450,attack:42,defense:15,gold:90,xp:600,desc:'Le seigneur de la forêt. Boss régional.',region:'foret',isRegionalBoss:true,drops:[{type:'material',id:'silver_fang',chance:0.8,qty:[2,3]},{type:'material',id:'mana_crystal',chance:0.4,qty:[1,2]},{type:'ingredient',id:'wolf_blood',chance:0.5,qty:[1,2]}]},
-    {id:'giant_boar',name:'Sanglier Géant',level:18,rarity:'rare',type:'force',element:'dark',icon:'boar-tusks',hp_max:550,attack:48,defense:18,gold:110,xp:700,desc:'Sa charge fait trembler le sol.',region:'marais',drops:[{type:'material',id:'iron_raw',chance:0.7,qty:[1,3]},{type:'material',id:'silver_fang',chance:0.3,qty:[1,2]}]},
-    {id:'cursed_fairy',name:'Fée Maudite',level:22,rarity:'epic',type:'agility',element:'dark',icon:'fairy-wand',hp_max:680,attack:58,defense:14,gold:150,xp:900,desc:'Ses ailes scintillent d\'une lumière vénéneuse.',region:'marais',drops:[{type:'material',id:'mana_crystal',chance:0.5,qty:[1,2]},{type:'ingredient',id:'fairy_tear',chance:0.7,qty:[1,2]}]},
-    {id:'swamp_troll',name:'Troll des Marais',level:26,rarity:'epic',type:'endurance',element:'dark',icon:'troll',hp_max:850,attack:65,defense:25,gold:190,xp:1100,desc:'Sa peau régénère plus vite que vos coups.',region:'marais',drops:[{type:'material',id:'rune_bone',chance:0.7,qty:[1,2]},{type:'material',id:'iron_raw',chance:0.5,qty:[1,3]}]},
-    {id:'corrupted_dryad',name:'Dryade Corrompue',level:30,rarity:'legendary',type:'endurance',element:'dark',icon:'gargoyle',hp_max:1200,attack:80,defense:28,gold:280,xp:1500,desc:'L\'âme tordue de la forêt elle-même. Boss régional.',region:'marais',isRegionalBoss:true,drops:[{type:'material',id:'mana_crystal',chance:0.7,qty:[2,3]},{type:'material',id:'rune_bone',chance:0.5,qty:[1,2]},{type:'ingredient',id:'fairy_tear',chance:0.6,qty:[2,3]}]}
-  ],
-  exercises:[
-    {id:'pushups',name:'Pompes Classiques',group:'haut',type:'force',baseDamage:8,unit:'reps',hasWeight:false,desc:'Le classique. Sol contre tes mains.'},
-    {id:'rowing',name:'Tirage Horizontal',group:'haut',type:'force',baseDamage:12,unit:'reps',hasWeight:true,desc:'Hale ton ennemi vers toi.'},
-    {id:'shoulder_press',name:'Développé Épaules',group:'haut',type:'force',baseDamage:10,unit:'reps',hasWeight:true,desc:'Pousse vers les cieux.'},
-    {id:'squats',name:'Squats',group:'bas',type:'force',baseDamage:10,unit:'reps',hasWeight:true,desc:'Le pilier de ta puissance.'},
-    {id:'dips',name:'Dips',group:'haut',type:'force',baseDamage:11,unit:'reps',hasWeight:false,desc:'Tes triceps gravent leur force.'},
-    {id:'lunges',name:'Fentes',group:'bas',type:'agility',baseDamage:9,unit:'reps',hasWeight:false,desc:'Avance tel le chevalier qui charge.'},
-    {id:'burpees',name:'Burpees',group:'full',type:'agility',baseDamage:12,unit:'reps',hasWeight:false,desc:'L\'exercice du cauchemar.'},
-    {id:'jumprope',name:'Saut à la corde',group:'full',type:'agility',baseDamage:8,unit:'seconds',hasWeight:false,desc:'Vif comme un éclair.'},
-    {id:'mountain_climb',name:'Mountain Climbers',group:'full',type:'agility',baseDamage:10,unit:'seconds',hasWeight:false,desc:'Cours sur place tel un démon.'},
-    {id:'pullups',name:'Tractions',group:'haut',type:'endurance',baseDamage:14,unit:'reps',hasWeight:true,desc:'Soulève ton corps face à la barre.'},
-    {id:'plank',name:'Planche',group:'full',type:'endurance',baseDamage:9,unit:'seconds',hasWeight:false,desc:'Ton corps devient une lame de pierre.'},
-    {id:'crunches',name:'Crunchs',group:'full',type:'endurance',baseDamage:8,unit:'reps',hasWeight:false,desc:'Sculpte ton noyau de fer.'},
-    {id:'curls',name:'Curl Biceps',group:'haut',type:'endurance',baseDamage:7,unit:'reps',hasWeight:true,desc:'Forge tes bras d\'acier.'}
-  ],
-  recipes_blacksmith:[
-    {weaponId:'sword_rusty',materials:[{id:'iron_raw',qty:2},{id:'wood_dark',qty:1}],gold:50},
-    {weaponId:'axe_woodcutter',materials:[{id:'wood_dark',qty:2},{id:'iron_raw',qty:1}],gold:60},
-    {weaponId:'bow_hunter',materials:[{id:'wood_dark',qty:3},{id:'silver_fang',qty:1}],gold:120},
-    {weaponId:'sword_knight',materials:[{id:'silver_fang',qty:3},{id:'iron_raw',qty:2},{id:'rune_bone',qty:1}],gold:200},
-    {weaponId:'staff_druid',materials:[{id:'wood_dark',qty:2},{id:'rune_bone',qty:1},{id:'mana_crystal',qty:1}],gold:300}
-  ],
-  recipes_witch:[
-    {id:'potion_heal',name:'Potion de soin',icon:'standing-potion',rarity:'common',desc:'+50 PV en combat.',effect:'heal',ingredients:[{id:'moon_herb',qty:2}],gold:0}
-  ],
-  spells:[
-    {id:'fireball',name:'Boule de Feu',icon:'fire-ball',element:'fire',manaCost:20,effect:'damage_flat',value:30,oncePerCombat:false,desc:'Une sphère ardente jaillit de tes paumes.'},
-    {id:'holy_light',name:'Lumière Sacrée',icon:'sun-priest',element:'holy',manaCost:25,effect:'heal_flat',value:60,oncePerCombat:false,desc:'Un rayon doré t\'enveloppe et guérit tes blessures.'},
-    {id:'wind_strike',name:'Trait de Vent',icon:'wind-slap',element:'wind',manaCost:15,effect:'damage_flat',value:20,oncePerCombat:false,desc:'Un coup d\'air tranchant et précis.'}
-  ],
-  zones:[
-    {id:'foret',name:'Forêt de Débutant',element:'wind',levelMin:1,levelMax:15,requiredLevel:1,requiredRegionalBoss:null,regionalBossId:'wolf_king',themeColor:'#22c55e',accent:'#86efac',desc:'Une forêt sombre et silencieuse. Les sentiers serpentent entre des arbres millénaires.',svgKey:'forest'},
-    {id:'marais',name:'Marais des Ombres',element:'dark',levelMin:16,levelMax:30,requiredLevel:12,requiredRegionalBoss:'wolf_king',regionalBossId:'corrupted_dryad',themeColor:'#a855f7',accent:'#c084fc',desc:'Brume violette et eaux stagnantes. Les ombres grouillent dans les roseaux.',svgKey:'swamp'},
-    {id:'caverne',name:'Caverne de Cristal',element:'water',levelMin:31,levelMax:50,requiredLevel:28,requiredRegionalBoss:'corrupted_dryad',regionalBossId:null,themeColor:'#22d3ee',accent:'#67e8f9',desc:'Profondeurs scintillantes. Les cristaux résonnent d\'une magie ancienne.',svgKey:'crystal'}
-  ]
-};
-
-/* =========================================================
-   ZONE BACKGROUNDS - SVG inline immersifs
-========================================================= */
-const ZONE_SVG={
-  forest:`<svg preserveAspectRatio="xMidYMid slice" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
-    <defs>
-      <linearGradient id="fSky" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#1e4a32"/><stop offset="55%" stop-color="#0d3020"/><stop offset="100%" stop-color="#04140d"/></linearGradient>
-    </defs>
-    <rect width="800" height="200" fill="url(#fSky)"/>
-    <circle cx="100" cy="30" r="1.2" fill="#fff" opacity="0.8"/>
-    <circle cx="220" cy="22" r="1" fill="#fff" opacity="0.6"/>
-    <circle cx="350" cy="38" r="1.2" fill="#fff" opacity="0.85"/>
-    <circle cx="480" cy="18" r="1" fill="#fff" opacity="0.7"/>
-    <circle cx="720" cy="28" r="1" fill="#fff" opacity="0.7"/>
-    <circle cx="640" cy="48" r="24" fill="#fff" opacity="0.25"/>
-    <circle cx="640" cy="48" r="17" fill="#e8f5e8" opacity="0.95"/>
-    <path d="M0,135 L120,75 L260,108 L420,68 L580,98 L800,85 L800,200 L0,200 Z" fill="#1f5a3e" opacity="0.85"/>
-    <path d="M0,170 L25,95 L42,148 L72,82 L102,140 L132,72 L168,140 L202,92 L242,150 L282,82 L322,140 L362,94 L402,150 L442,82 L478,140 L512,92 L552,150 L592,82 L628,140 L662,94 L702,150 L742,82 L782,140 L800,105 L800,200 L0,200 Z" fill="#256a45"/>
-    <path d="M0,200 L18,130 L42,180 L72,108 L108,170 L148,93 L188,180 L228,123 L268,185 L308,103 L352,175 L398,123 L442,180 L488,98 L532,180 L578,123 L622,180 L668,108 L708,170 L748,98 L788,180 L800,138 L800,200 Z" fill="#0c2e1d"/>
-  </svg>`,
-  swamp:`<svg preserveAspectRatio="xMidYMid slice" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
-    <defs>
-      <linearGradient id="sSky" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#1a0a2a"/><stop offset="100%" stop-color="#0a0518"/></linearGradient>
-      <radialGradient id="sFog" cx="0.5" cy="0.7" r="0.7"><stop offset="0%" stop-color="rgba(150,80,200,0.4)"/><stop offset="100%" stop-color="rgba(100,40,160,0)"/></radialGradient>
-    </defs>
-    <rect width="800" height="200" fill="url(#sSky)"/>
-    <ellipse cx="400" cy="180" rx="500" ry="100" fill="url(#sFog)"/>
-    <circle cx="200" cy="50" r="2" fill="#e9b8ff" opacity="0.8"/><circle cx="400" cy="35" r="2" fill="#fff" opacity="0.6"/><circle cx="600" cy="60" r="2" fill="#e9b8ff" opacity="0.7"/>
-    <g opacity="0.6"><path d="M50,180 L50,130 M55,180 L55,135 M60,180 L60,140" stroke="#3a1f4a" stroke-width="1.5"/><path d="M120,180 L120,120 M125,180 L125,128 M130,180 L130,135 M135,180 L135,125" stroke="#3a1f4a" stroke-width="1.5"/><path d="M250,180 L250,135 M255,180 L255,140 M260,180 L260,130" stroke="#3a1f4a" stroke-width="1.5"/><path d="M380,180 L380,118 M385,180 L385,125 M390,180 L390,130 M395,180 L395,135" stroke="#3a1f4a" stroke-width="1.5"/><path d="M520,180 L520,130 M525,180 L525,140 M530,180 L530,128 M535,180 L535,138" stroke="#3a1f4a" stroke-width="1.5"/><path d="M660,180 L660,135 M665,180 L665,140 M670,180 L670,128 M675,180 L675,135" stroke="#3a1f4a" stroke-width="1.5"/></g>
-    <ellipse cx="200" cy="195" rx="80" ry="6" fill="#1a0a2a"/><ellipse cx="500" cy="195" rx="120" ry="6" fill="#1a0a2a"/>
-    <circle cx="180" cy="100" r="2" fill="#ffe066" opacity="0.9"><animate attributeName="opacity" values="0.3;1;0.3" dur="3s" repeatCount="indefinite"/></circle>
-    <circle cx="450" cy="80" r="2" fill="#ffe066" opacity="0.7"><animate attributeName="opacity" values="0.3;1;0.3" dur="2.5s" repeatCount="indefinite"/></circle>
-    <circle cx="650" cy="110" r="2" fill="#ffe066" opacity="0.8"><animate attributeName="opacity" values="0.3;1;0.3" dur="3.5s" repeatCount="indefinite"/></circle>
-  </svg>`,
-  crystal:`<svg preserveAspectRatio="xMidYMid slice" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
-    <defs>
-      <linearGradient id="cSky" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#0a1f2a"/><stop offset="100%" stop-color="#020a14"/></linearGradient>
-      <linearGradient id="cCrystal" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#67e8f9" stop-opacity="0.9"/><stop offset="100%" stop-color="#0e7490" stop-opacity="0.4"/></linearGradient>
-    </defs>
-    <rect width="800" height="200" fill="url(#cSky)"/>
-    <g opacity="0.5"><path d="M50,0 L60,80 L70,0 Z" fill="url(#cCrystal)"/><path d="M180,0 L195,90 L210,0 Z" fill="url(#cCrystal)"/><path d="M350,0 L365,70 L380,0 Z" fill="url(#cCrystal)"/><path d="M500,0 L520,100 L540,0 Z" fill="url(#cCrystal)"/><path d="M650,0 L665,80 L680,0 Z" fill="url(#cCrystal)"/></g>
-    <g opacity="0.8"><path d="M30,200 L60,120 L90,200 Z" fill="url(#cCrystal)"/><path d="M140,200 L170,90 L200,200 Z" fill="url(#cCrystal)"/><path d="M280,200 L320,100 L360,200 Z" fill="url(#cCrystal)"/><path d="M440,200 L475,80 L510,200 Z" fill="url(#cCrystal)"/><path d="M570,200 L610,110 L650,200 Z" fill="url(#cCrystal)"/><path d="M700,200 L740,95 L780,200 Z" fill="url(#cCrystal)"/></g>
-    <circle cx="100" cy="40" r="1.5" fill="#67e8f9"><animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite"/></circle>
-    <circle cx="300" cy="60" r="1" fill="#a5f3fc"><animate attributeName="opacity" values="0;1;0" dur="2.8s" repeatCount="indefinite"/></circle>
-    <circle cx="500" cy="40" r="1.5" fill="#67e8f9"><animate attributeName="opacity" values="0;1;0" dur="3.2s" repeatCount="indefinite"/></circle>
-    <circle cx="700" cy="55" r="1" fill="#a5f3fc"><animate attributeName="opacity" values="0;1;0" dur="2.4s" repeatCount="indefinite"/></circle>
-  </svg>`,
-  default:`<svg preserveAspectRatio="xMidYMid slice" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
-    <defs><linearGradient id="dSky" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#1a1228"/><stop offset="100%" stop-color="#0a0612"/></linearGradient></defs>
-    <rect width="800" height="200" fill="url(#dSky)"/>
-  </svg>`
-};
-
-const SUGGESTED_REPS={reps:10,seconds:30};
+import {
+  STORAGE_KEY,
+  VERSION,
+  RARITY_COLORS,
+  FALLBACK_BOSS,
+  FALLBACK_WEAPON,
+  FALLBACK_MAT,
+  FALLBACK_ING,
+  TYPE_ICON,
+  TYPE_LABEL,
+  TYPE_CSS,
+  COUNTER_TYPE,
+  RARITY_VALUE,
+  UPGRADE_COST,
+  RARITY_ORDER,
+  POTION_PRICE,
+  SELL_MATERIAL,
+  SELL_INGREDIENT,
+  MAX_COMB_LEVEL,
+  COMB_BONUS_PER_LEVEL,
+  SLOT_LABEL,
+  SUGGESTED_REPS,
+} from './data/constants.js';
+import {
+  ELEMENTS,
+  ELEMENT_OPTIONS,
+  elementMultiplier,
+  elementTag,
+} from './data/elements.js';
+import { GAME_DATA } from './data/gameData.js';
+import { ZONE_SVG } from './data/zones.js';
 
 /* DATA WRAPPERS - Phase 6B */
 function _isDisabled(id){return state&&state.player&&state.player.custom&&state.player.custom.disabledIds.includes(id);}
