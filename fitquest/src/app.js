@@ -1,6 +1,4 @@
 import {
-  STORAGE_KEY,
-  VERSION,
   RARITY_COLORS,
   FALLBACK_BOSS,
   FALLBACK_WEAPON,
@@ -29,6 +27,8 @@ import {
 } from './data/elements.js';
 import { GAME_DATA } from './data/gameData.js';
 import { ZONE_SVG } from './data/zones.js';
+import { defaultState } from './core/state.js';
+import { loadGame, saveGame, resetGame, replaceStoredSave } from './core/storage.js';
 
 /* DATA WRAPPERS - Phase 6B */
 function _isDisabled(id){return state&&state.player&&state.player.custom&&state.player.custom.disabledIds.includes(id);}
@@ -66,88 +66,19 @@ function imgFor(item,sizeClass,fallbackEmoji){
 }
 
 /* STATE */
-function defaultState(){
-  return{
-    version:VERSION,
-    player:{
-      name:'',level:1,xp:0,
-      stats:{force:10,defense:5,agility:5,constitution:100,hp_current:100,mana:100,mp_current:100},
-      gold:0,potions:3,ethers:2,
-      equipment:{weapon_main:null,weapon_secondary:null,armor:null,helmet:null,legs:null,cape:null,accessory_1:null,accessory_2:null},
-      weapons:[],         // armes forgées (uid)
-      materials:{},       // {matId:qty}
-      ingredients:{},     // {ingId:qty}
-      records:{},records_bonus:{},
-      currentZone:'foret',
-      unlockedZones:['foret'],
-      defeatedRegionalBosses:[],
-      recovering:false,
-      knownSpells:['fireball','holy_light','wind_strike'],
-      equippedSpells:['fireball','holy_light','wind_strike'],
-      custom:{zones:[],exercises:[],bosses:[],equipment:[],materials:[],ingredients:[],blacksmith:[],witch:[],spells:[],disabledIds:[]}
-    },
-    boss:{current:null,defeated:[]},
-    sessions:[],session_current:null,
-    meta:{total_sessions:0,total_bosses:0,total_levelups:0,created_at:null,last_played:null}
-  };
-}
 let state=null;
 let currentExerciseId=null;
 let invTypeFilter='all';
 let activeInvTab='inventory';
 let activeMerchantTab='buy';
 
-function loadState(){try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return null;return migrateState(JSON.parse(raw));}catch(e){console.error(e);return null;}}
-function migrateState(s){
-  const def=defaultState();
-  s.version=VERSION;
-  s.player=Object.assign({},def.player,s.player||{});
-  s.player.stats=Object.assign({},def.player.stats,s.player.stats||{});
-  s.player.equipment=Object.assign({},def.player.equipment,s.player.equipment||{});
-  s.player.records=s.player.records||{};
-  s.player.records_bonus=s.player.records_bonus||{};
-  s.player.weapons=s.player.weapons||[];
-  s.player.weapons.forEach(w=>{if(typeof w.combLevel!=='number')w.combLevel=0;});
-  Object.values(s.player.equipment||{}).forEach(it=>{if(it&&typeof it.combLevel!=='number')it.combLevel=0;});
-  s.player.materials=s.player.materials||{};
-  s.player.ingredients=s.player.ingredients||{};
-  if(!s.player.currentZone)s.player.currentZone='foret';
-  if(!Array.isArray(s.player.unlockedZones))s.player.unlockedZones=['foret'];
-  if(!Array.isArray(s.player.defeatedRegionalBosses))s.player.defeatedRegionalBosses=[];
-  if(typeof s.player.recovering!=='boolean')s.player.recovering=false;
-  if(!s.player.custom)s.player.custom={};
-  s.player.custom.zones=s.player.custom.zones||[];
-  s.player.custom.exercises=s.player.custom.exercises||[];
-  s.player.custom.bosses=s.player.custom.bosses||[];
-  s.player.custom.equipment=s.player.custom.equipment||[];
-  s.player.custom.materials=s.player.custom.materials||[];
-  s.player.custom.ingredients=s.player.custom.ingredients||[];
-  s.player.custom.blacksmith=s.player.custom.blacksmith||[];
-  s.player.custom.witch=s.player.custom.witch||[];
-  s.player.custom.spells=s.player.custom.spells||[];
-  s.player.custom.disabledIds=s.player.custom.disabledIds||[];
-  if(!Array.isArray(s.player.knownSpells))s.player.knownSpells=['fireball','holy_light','wind_strike'];
-  if(!Array.isArray(s.player.equippedSpells))s.player.equippedSpells=[s.player.knownSpells[0]||null,s.player.knownSpells[1]||null,s.player.knownSpells[2]||null];
-  // Migration v2 → v3 : convertir l'ancien inventory en weapons + matériaux de départ
-  if(s.player.inventory){
-    s.player.inventory.forEach(it=>{
-      if(it.slot){ if(!it.uid) it.uid='i_'+Date.now()+'_'+Math.floor(Math.random()*999); s.player.weapons.push(it); }
-    });
-    delete s.player.inventory;
-  }
-  if(typeof s.player.potions!=='number') s.player.potions=3;
-  if(typeof s.player.ethers!=='number') s.player.ethers=2;
-  if(typeof s.player.stats.mana!=='number') s.player.stats.mana=100;
-  if(typeof s.player.stats.mp_current!=='number') s.player.stats.mp_current=s.player.stats.mana;
-  s.boss=Object.assign({},def.boss,s.boss||{});
-  s.sessions=s.sessions||[];
-  s.session_current=s.session_current||null;
-  s.meta=Object.assign({},def.meta,s.meta||{});
-  delete s.combat_current;
-  return s;
+function saveState(){
+  saveGame(state,{onPersistError:()=>showToast('⚠ Erreur de sauvegarde')});
 }
-function saveState(){try{state.meta.last_played=new Date().toISOString();localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e){console.error(e);showToast('⚠ Erreur de sauvegarde');}}
-function resetState(){localStorage.removeItem(STORAGE_KEY);state=null;}
+function resetState(){
+  resetGame();
+  state=null;
+}
 
 /* HELPERS */
 function $(id){return document.getElementById(id);}
@@ -1537,7 +1468,7 @@ function bindAdminListeners(){
       const txt=$('importArea').value.trim();if(!txt){showToast('⚠ Colle un JSON d\'abord');return;}
       try{const parsed=JSON.parse(txt);if(!parsed.player){throw new Error('Format invalide');}
         if(!confirm('Remplacer toute ta progression par ce JSON ?'))return;
-        localStorage.setItem(STORAGE_KEY,JSON.stringify(parsed));location.reload();
+        replaceStoredSave(parsed);location.reload();
       }catch(e){showToast('⚠ JSON invalide');}
     });
     $('btnResetCustom').addEventListener('click',()=>{
@@ -1788,7 +1719,7 @@ $('adminEditModal').addEventListener('click',(e)=>{if(e.target.id==='adminEditMo
 
 /* BOOT */
 function boot(){
-  state=loadState();
+  state=loadGame();
   if(!state||!state.player||!state.player.name){
     state=defaultState();state.meta.created_at=new Date().toISOString();
     openModal('welcomeModal');setTimeout(()=>$('nameInput').focus(),300);

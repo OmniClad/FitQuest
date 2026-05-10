@@ -1,0 +1,68 @@
+import { VERSION } from '../data/constants.js';
+
+/** État initial (nouvelle partie ou fallback migrate). */
+export function defaultState() {
+  return {
+    version: VERSION,
+    player: {
+      name: '',
+      level: 1,
+      xp: 0,
+      stats: {
+        force: 10,
+        defense: 5,
+        agility: 5,
+        constitution: 100,
+        hp_current: 100,
+        mana: 100,
+        mp_current: 100,
+      },
+      gold: 0,
+      potions: 3,
+      ethers: 2,
+      equipment: {
+        weapon_main: null,
+        weapon_secondary: null,
+        armor: null,
+        helmet: null,
+        legs: null,
+        cape: null,
+        accessory_1: null,
+        accessory_2: null,
+      },
+      weapons: [],
+      materials: {},
+      ingredients: {},
+      records: {},
+      records_bonus: {},
+      currentZone: 'foret',
+      unlockedZones: ['foret'],
+      defeatedRegionalBosses: [],
+      recovering: false,
+      knownSpells: ['fireball', 'holy_light', 'wind_strike'],
+      equippedSpells: ['fireball', 'holy_light', 'wind_strike'],
+      custom: {
+        zones: [],
+        exercises: [],
+        bosses: [],
+        equipment: [],
+        materials: [],
+        ingredients: [],
+        blacksmith: [],
+        witch: [],
+        spells: [],
+        disabledIds: [],
+      },
+    },
+    boss: { current: null, defeated: [] },
+    sessions: [],
+    session_current: null,
+    meta: {
+      total_sessions: 0,
+      total_bosses: 0,
+      total_levelups: 0,
+      created_at: null,
+      last_played: null,
+    },
+  };
+}
