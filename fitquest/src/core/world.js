@@ -15,11 +15,13 @@ export function isZoneUnlocked(zoneId, player, zones) {
   return true;
 }
 
-/** Mutate player.unlockedZones */
+/** Mutate player.unlockedZones — zones with travelKm > 0 require GPS travel, never auto-unlock */
 export function tryUnlockZones(player, zones) {
   zones.forEach((z) => {
     if (!player.unlockedZones.includes(z.id) && isZoneUnlocked(z.id, player, zones)) {
-      player.unlockedZones.push(z.id);
+      if (!z.travelKm || z.travelKm === 0) {
+        player.unlockedZones.push(z.id);
+      }
     }
   });
 }

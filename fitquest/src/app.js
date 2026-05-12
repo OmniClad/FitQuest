@@ -35,7 +35,7 @@ import {
   handlePresessionLaunchInteraction,
 } from './ui/renderSession.js';
 import { renderAdminPanel } from './ui/renderAdmin.js';
-import { renderQuestsView } from './ui/renderQuests.js';
+import { renderQuestsView, updateQuestBadge } from './ui/renderQuests.js';
 import { showFloatingDmg, flashBossPortrait, shakeScreen } from './ui/renderCombatFx.js';
 import { showSummaryModal, showRecoverySummaryModal, showVictoryModal, showDefeatModal } from './ui/renderModals.js';
 import { openEnemyStatsModal } from './ui/enemyStatsPanel.js';
@@ -105,7 +105,7 @@ function applyAppVolume(volumePercent, { persist = false } = {}){
 
 const world=createWorldBindings({getState:()=>state,catalog});
 
-function renderAll(){ renderDashboardAll(); }
+function renderAll(){ renderDashboardAll(); updateQuestBadge(state); }
 
 const { openModal, closeModal, showView } = createAppShell({
   $,
@@ -147,6 +147,7 @@ const{
   startRegionalBossEncounter,
   startSession,
   startRecoverySession,
+  abandonSession,
   confirmExerciseSubmission,
   castSpell,
   regenerateExerciseSet,
@@ -228,6 +229,7 @@ function boot(){
   }else{
     audioBus.setMasterVolume(state.settings.audio.masterVolume);
     reconcileQuestState(state, null);
+    updateQuestBadge(state);
     if(state.session_current)showView('session');else showView('dashboard');
   }
 }
@@ -258,7 +260,7 @@ $('btnStartSession').addEventListener('click',()=>{
 
 $('btnInventory').addEventListener('click',()=>showView('inventory'));
 $('btnQuests').addEventListener('click',()=>showView('quests'));
-$('btnAdmin').addEventListener('click',()=>showView('admin'));
+$('btnAdmin').addEventListener('click',()=>{closeModal('settingsModal');showView('admin');});
 $('btnSyncSteps').addEventListener('click',async ()=>{
   if(!state?.player)return;
   const { platform } = await refreshStepsFromDevice();
@@ -304,6 +306,9 @@ $('viewPreSession').addEventListener('click',(e)=>{
 $('cancelExercise').addEventListener('click',()=>closeModal('exerciseModal'));
 $('confirmExercise').addEventListener('click',confirmExerciseSubmission);
 $('btnFinishSession').addEventListener('click',finishSession);
+$('btnAbandonSession').addEventListener('click',()=>{
+  if(confirm('Fuir le combat ? Le boss s\'enfuira sans récompense et vos blessures resteront.')) abandonSession();
+});
 $('btnReturnDashboard').addEventListener('click',()=>{closeModal('summaryModal');showView('dashboard');});
 $('btnVictoryReturn').addEventListener('click',()=>{closeModal('victoryModal');showView('dashboard');});
 $('btnDefeatReturn').addEventListener('click',()=>{closeModal('defeatModal');showView('dashboard');});
@@ -340,6 +345,13 @@ document.querySelectorAll('[data-merchant]').forEach(b=>{
 /* Voyager modal close */
 $('zoneTravelClose').addEventListener('click',()=>closeModal('zoneTravelModal'));
 $('zoneTravelModal').addEventListener('click',(e)=>{if(e.target.id==='zoneTravelModal')closeModal('zoneTravelModal');});
+/* GPS Travel modal — cancel stops the tracker */
+$('gpsTravelCancel').addEventListener('click',()=>{
+  // Import is already done in renderDashboard; we just need to close. The tracker stops on its own when the module reference is cleared.
+  // Actually we need to call stop — use a custom event approach.
+  document.dispatchEvent(new CustomEvent('gps-travel-cancel'));
+  closeModal('gpsTravelModal');
+});
 $('equipPickerClose').addEventListener('click',()=>closeModal('equipPickerModal'));
 $('equipPickerModal').addEventListener('click',(e)=>{if(e.target.id==='equipPickerModal')closeModal('equipPickerModal');});
 $('enemyStatsClose').addEventListener('click',()=>closeModal('enemyStatsModal'));

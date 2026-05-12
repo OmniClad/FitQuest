@@ -222,8 +222,18 @@ export function renderPreSessionView() {
     uiCtx.saveState();
   }
   const tier = getDifficultyTier(boss.level);
-  const genOpts = presessionNumExOverride != null ? { numEx: presessionNumExOverride } : {};
-  const proposed = uiCtx.generateProposedExercises(boss, genOpts);
+  // Tâche 1 : verrouiller les exercices dès la première vue pré-session
+  let proposed;
+  if (boss.lockedExercises && boss.lockedExercises.length > 0) {
+    proposed = boss.lockedExercises
+      .map((id) => uiCtx.allExercises().find((e) => e.id === id))
+      .filter(Boolean);
+  } else {
+    const genOpts = presessionNumExOverride != null ? { numEx: presessionNumExOverride } : {};
+    proposed = uiCtx.generateProposedExercises(boss, genOpts);
+    state.boss.current.lockedExercises = proposed.map((e) => e.id);
+    uiCtx.saveState();
+  }
   const counterT = COUNTER_TYPE[boss.type];
   const color = RARITY_COLORS[boss.rarity] || RARITY_COLORS.common;
   const fallback = FALLBACK_BOSS[boss.id] || FALLBACK_BOSS.default;
@@ -303,6 +313,19 @@ export function renderPreSessionView() {
             : `<span class="presession-dmg-line presession-dmg-line--normal">${dmgInner}</span>`;
       const volLine = `${tier.sets}×${suggestedVol} ${unitLabel}${ex.hasWeight ? ' · 🏋' : ''}`;
       const typeCls = TYPE_CSS[ex.type] || '';
+      // Tâche 6/11 : afficher le record personnel (kg + volume)
+      const recKg = ex.hasWeight ? (state.player.records[ex.id] || 0) : 0;
+      const recVol = (state.player.records_vol || {})[ex.id] || 0;
+      const recUnit = ex.unit === 'seconds' ? 'sec' : 'reps';
+      let recordHtml = '';
+      if (recKg > 0 || recVol > 0) {
+        const parts = [];
+        if (recKg > 0) parts.push(`${recKg} kg`);
+        if (recVol > 0) parts.push(`${recVol} ${recUnit}`);
+        recordHtml = `<span class="presession-personal-record">🏆 Record : <strong>${parts.join(' · ')}</strong></span>`;
+      } else {
+        recordHtml = `<span class="presession-personal-record presession-personal-record--none">🏆 Pas encore de record</span>`;
+      }
       return `<div class="exercise-card presession-exercise ${typeCls}" style="--presession-dmg-fade-start:${dmgFadeStart}%;--presession-dmg-pct:${dmgPct}%;">
   <div class="exercise-info">
     <div class="exercise-name presession-exercise-title"><span class="presession-exercise-name-text">${ex.name}</span><span class="presession-exercise-volume">${volLine}</span></div>
@@ -312,6 +335,7 @@ export function renderPreSessionView() {
         <span class="presession-dmg-in-bar">${dmgCore}</span>
       </div>
     </div>
+    ${recordHtml}
   </div>
 </div>`;
     })
@@ -576,18 +600,18 @@ export function openExerciseModalRecovery(exerciseId) {
   $('exModalName').textContent = ex.name;
   $('exModalIcon').textContent = TYPE_ICON[ex.type];
   $('exModalDesc').textContent = ex.desc;
-  $('exModalMatchup').innerHTML = `<span class="type-tag ${TYPE_CSS[ex.type]}">${TYPE_LABEL[ex.type]}</span> <span style="color:var(--success);font-size:11px;font-weight:700;">⚕ Convalescence</span>`;
+  $('exModalMatchup').innerHTML = `<span class="type-tag ${TYPE_CSS[ex.type]}">${TYPE_LABEL[ex.type]}</span> <span style="color:var(--success);font-size:11px;font-weight:700;">\u2695 Convalescence</span>`;
   $('exSets').value = 2;
   if (ex.unit === 'seconds') {
     $('exRepsLabel').textContent = 'Secondes';
     $('exReps').value = 20;
   } else {
-    $('exRepsLabel').textContent = 'Répétitions';
+    $('exRepsLabel').textContent = 'R\u00e9p\u00e9titions';
     $('exReps').value = 8;
   }
   $('exWeight').value = 0;
   $('exWeightContainer').style.display = ex.hasWeight ? '' : 'none';
-  $('damagePreviewValue').textContent = '—';
-  $('matchupNote').innerHTML = '<span style="color:var(--success);">Aucun dégât (récupération)</span>';
+  $('damagePreviewValue').textContent = '\u2014';
+  $('matchupNote').innerHTML = '<span style="color:var(--success);">Aucun d\u00e9g\u00e2t (r\u00e9cup\u00e9ration)</span>';
   uiCtx.openModal('exerciseModal');
 }

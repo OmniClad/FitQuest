@@ -24,10 +24,12 @@ export function renderInventoryView() {
     t.classList.toggle('active', t.dataset.tab === uiCtx.inventoryUi.activeInvTab)
   );
   $('tabInventory').style.display = uiCtx.inventoryUi.activeInvTab === 'inventory' ? 'block' : 'none';
+  $('tabSpells').style.display = uiCtx.inventoryUi.activeInvTab === 'spells' ? 'block' : 'none';
   $('tabBlacksmith').style.display = uiCtx.inventoryUi.activeInvTab === 'blacksmith' ? 'block' : 'none';
   $('tabWitch').style.display = uiCtx.inventoryUi.activeInvTab === 'witch' ? 'block' : 'none';
   $('tabMerchant').style.display = uiCtx.inventoryUi.activeInvTab === 'merchant' ? 'block' : 'none';
   if (uiCtx.inventoryUi.activeInvTab === 'inventory') renderInventoryGrid();
+  else if (uiCtx.inventoryUi.activeInvTab === 'spells') renderSpellEquip();
   else if (uiCtx.inventoryUi.activeInvTab === 'blacksmith') renderBlacksmith();
   else if (uiCtx.inventoryUi.activeInvTab === 'witch') renderWitch();
   else if (uiCtx.inventoryUi.activeInvTab === 'merchant') renderMerchant();
@@ -403,6 +405,69 @@ export function renderMerchantSell() {
       uiCtx.saveState();
       renderInventoryView();
       uiCtx.showToast(`💰 +${total} or`);
+    });
+  });
+}
+
+export function renderSpellEquip() {
+  const state = uiCtx.getState();
+  const $ = uiCtx.$;
+  const equipped = state.player.equippedSpells || [null, null, null];
+  const allSpells = uiCtx.allSpells();
+
+  // Emplacements equipés
+  const slotsHtml = equipped.map((id, i) => {
+    const s = id ? allSpells.find((sp) => sp.id === id) : null;
+    if (!s) {
+      return `<div class="spell-slot spell-slot--empty" data-slot="${i}">
+        <div class="spell-slot-num">Emplacement ${i + 1}</div>
+        <div class="spell-slot-empty-label">🪄 Vide</div>
+      </div>`;
+    }
+    return `<div class="spell-slot spell-slot--filled" data-slot="${i}">
+      <div class="spell-slot-num">Emplacement ${i + 1}</div>
+      <div class="spell-slot-name">${s.name}</div>
+      <div class="spell-slot-meta">${s.manaCost} MP · ${s.effect === 'damage_flat' ? '⚔ ' + s.value + ' dégâts' : '💚 ' + s.value + ' PV'}</div>
+      <button class="spell-unequip-btn" data-slot="${i}">📤 Retirer</button>
+    </div>`;
+  }).join('');
+
+  // Catalogue de sorts disponibles
+  const catalogHtml = allSpells.map((s) => {
+    const equippedSlot = equipped.indexOf(s.id);
+    const isEquipped = equippedSlot >= 0;
+    return `<div class="spell-catalog-card ${isEquipped ? 'spell-equipped' : ''}">
+      <div class="spell-catalog-name">${s.name}${isEquipped ? ' <span class="spell-equipped-badge">Équipé</span>' : ''}</div>
+      <div class="spell-catalog-meta">${s.manaCost} MP · ${s.effect === 'damage_flat' ? '⚔ ' + s.value + ' dégâts' : '💚 ' + s.value + ' PV'} · ${s.desc || ''}</div>
+      ${!isEquipped ? `<div class="spell-equip-btns">${equipped.map((e, i) => `<button class="btn-spell-equip" data-spell="${s.id}" data-slot="${i}">${e ? '↔ Slot ' + (i+1) : '+ Slot ' + (i+1)}</button>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('') || '<div class="empty-state"><span class="icon">🪄</span>Aucun sort disponible. Cr&eacute;ez-en dans l\'Admin.</div>';
+
+  $('spellSlots').innerHTML = `<div class="spell-slots-grid">${slotsHtml}</div>`;
+  $('spellCatalog').innerHTML = catalogHtml;
+
+  // Retirer un sort équipé
+  $('spellSlots').querySelectorAll('.spell-unequip-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const slot = parseInt(btn.dataset.slot, 10);
+      state.player.equippedSpells[slot] = null;
+      uiCtx.saveState();
+      renderSpellEquip();
+    });
+  });
+
+  // Équiper un sort dans un slot
+  $('spellCatalog').querySelectorAll('.btn-spell-equip').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const spellId = btn.dataset.spell;
+      const slot = parseInt(btn.dataset.slot, 10);
+      // Retirer ce sort d'un autre slot si déjà équipé ailleurs
+      const prev = state.player.equippedSpells.indexOf(spellId);
+      if (prev >= 0) state.player.equippedSpells[prev] = null;
+      state.player.equippedSpells[slot] = spellId;
+      uiCtx.saveState();
+      renderSpellEquip();
+      uiCtx.showToast(`\u{1F9A4} ${spellId} \u00e9quip\u00e9 en slot ${slot + 1}`);
     });
   });
 }

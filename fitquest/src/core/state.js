@@ -33,8 +33,9 @@ export function defaultState() {
       weapons: [],
       materials: {},
       ingredients: {},
-      records: {},
-      records_bonus: {},
+      records: {},      /* max kg par exercice (hasWeight=true) */
+      records_vol: {},  /* max volume (sets×reps ou sets×sec) par exercice */
+      records_bonus: {},/* nb de fois qu'un record a été battu par exercice */
       currentZone: 'foret',
       unlockedZones: ['foret'],
       defeatedRegionalBosses: [],

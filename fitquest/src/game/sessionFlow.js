@@ -127,6 +127,8 @@ export function createSessionFlow(deps) {
   function victory() {
     const state = getState();
     const b = state.boss.current;
+    // Nettoyer les exercices verrouillés à la victoire
+    if (b && b.lockedExercises) delete b.lockedExercises;
     const isRegional = !!b.isRegionalBoss;
     const xpFromSession = state.session_current ? state.session_current.xpEarned + 30 : 0;
     const goldMult = isRegional ? 1.5 : 1;
@@ -241,15 +243,49 @@ export function createSessionFlow(deps) {
     }
     const ex = state.session_current.exercises.find((e) => e.id === currentExerciseId);
     const exData = catalog.allExercises().find((e) => e.id === currentExerciseId);
+
+    // ── RECORDS ENRICHIS ──────────────────────────────────────────────────
+    // Volume = séries × répétitions (ou séries × secondes)
+    const volume = sets * repsOrSec;
     let recordBeaten = false;
+    let recordStatLabel = '';
+
+    // Stat gagnée selon type d'exercice
+    const statMap = { force: 'force', endurance: 'defense', agility: 'agility' };
+    const statKey = statMap[exData.type];
+    const statLabel = { force: '💪 Force', endurance: '🛡 Défense', agility: '⚡ Vitesse' }[exData.type] || '';
+
+    if (!state.player.records_vol) state.player.records_vol = {};
+
     if (exData.hasWeight && weight > 0) {
-      const prev = state.player.records[currentExerciseId] || 0;
-      if (weight > prev) {
+      // Exercice avec poids : record si kg augmente OU si volume augmente
+      const prevKg = state.player.records[currentExerciseId] || 0;
+      const prevVol = state.player.records_vol[currentExerciseId] || 0;
+      if (weight > prevKg) {
         state.player.records[currentExerciseId] = weight;
-        state.player.records_bonus[currentExerciseId] = (state.player.records_bonus[currentExerciseId] || 0) + 5;
+        recordBeaten = true;
+      }
+      if (volume > prevVol) {
+        state.player.records_vol[currentExerciseId] = volume;
+        recordBeaten = true;
+      }
+    } else {
+      // Exercice sans poids : record sur le volume uniquement
+      const prevVol = state.player.records_vol[currentExerciseId] || 0;
+      if (volume > prevVol) {
+        state.player.records_vol[currentExerciseId] = volume;
         recordBeaten = true;
       }
     }
+
+    if (recordBeaten && statKey) {
+      // +1 à la statistique correspondante
+      state.player.stats[statKey] = (state.player.stats[statKey] || 0) + 1;
+      state.player.records_bonus[currentExerciseId] = (state.player.records_bonus[currentExerciseId] || 0) + 1;
+      recordStatLabel = statLabel;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     const bonus = computeEquipmentBonus(state.player);
     const totalSpeed = state.player.stats.agility + (bonus.agility || 0);
     const critChance = Math.min(40, 5 + totalSpeed * 0.5) / 100;
@@ -266,6 +302,7 @@ export function createSessionFlow(deps) {
     ex.weight = weight;
     ex.damageDealt = damage;
     ex.recordBeaten = recordBeaten;
+    ex.recordStatLabel = recordStatLabel;
     state.boss.current.hp = Math.max(0, state.boss.current.hp - damage);
     state.session_current.totalDamage += damage;
     state.session_current.xpEarned += 30;
@@ -280,7 +317,7 @@ export function createSessionFlow(deps) {
     let msg = `⚔ ${ex.name} ! <strong>+${damage} dégâts</strong>`;
     if (isCrit) msg += ' <strong>(CRITIQUE)</strong>';
     if (skillUsed) msg += ' <strong>⚡</strong>';
-    if (recordBeaten) msg += `<br>🏆 <strong>RECORD BATTU !</strong> +5 dégâts permanents`;
+    if (recordBeaten) msg += `<br>🏆 <strong>RECORD BATTU !</strong> +1 ${recordStatLabel}`;
     showToast(msg, 3500);
     gameEvents.emit('combat_hit', { crit: isCrit });
     saveState();
@@ -410,15 +447,26 @@ export function createSessionFlow(deps) {
     showToast("🌀 Nouveau set d'exercices généré ! Le boss tient encore.", 3500);
   }
 
+  function abandonSession() {
+    const state = getState();
+    if (!state.session_current) return;
+    const bossName = state.boss.current ? state.boss.current.name : 'Le boss';
+    if (state.boss.current) delete state.boss.current.lockedExercises;
+    state.boss.current = null;
+    state.session_current = null;
+    saveState();
+    gameEvents.emit('defeat');
+    showToast(`🏃 ${bossName} s'est enfui dans les ténèbres ! Aucune récompense. Vos blessures persistent.`, 4500);
+    showView('dashboard');
+  }
+
   function finishSession() {
     const state = getState();
     if (!state.session_current) return;
     const completed = state.session_current.exercises.filter((e) => e.completed);
     if (completed.length === 0) {
-      if (!confirm('Aucun exercice complété. Abandonner la séance ?')) return;
-      state.session_current = null;
-      saveState();
-      showView('dashboard');
+      if (!confirm('Aucun exercice complété. Le boss va s\'enfuir sans récompense. Confirmer ?')) return;
+      abandonSession();
       return;
     }
     const xpGained = state.session_current.xpEarned + 20;
@@ -449,7 +497,7 @@ export function createSessionFlow(deps) {
       totalReceived: state.session_current.totalReceived,
       xpGained,
       levelsGained,
-      records: completed.filter((e) => e.recordBeaten).map((e) => e.name),
+      records: completed.filter((e) => e.recordBeaten).map((e) => ({ name: e.name, statLabel: e.recordStatLabel || '' })),
       remainingBoss,
     };
     state.session_current = null;
@@ -461,6 +509,7 @@ export function createSessionFlow(deps) {
     startRegionalBossEncounter,
     startSession,
     startRecoverySession,
+    abandonSession,
     confirmExerciseSubmission,
     castSpell,
     regenerateExerciseSet,
