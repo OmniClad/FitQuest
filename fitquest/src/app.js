@@ -150,6 +150,7 @@ const{
   abandonSession,
   confirmExerciseSubmission,
   castSpell,
+  activateLimit,
   regenerateExerciseSet,
   finishSession,
 }=session;
@@ -397,6 +398,7 @@ bindUi({
   brewPotion,
   getSpellById:catalog.getSpellById,
   castSpell,
+  activateLimit,
   showFloatingDmg,
   computeExerciseDamage: world.computeExerciseDamage,
   setCurrentExerciseId: (id) => {

@@ -26,6 +26,20 @@ export function tryUnlockZones(player, zones) {
   });
 }
 
+/**
+ * Tirage pondéré par spawnRate.
+ * Un boss avec spawnRate:0.6 apparaît 3× plus souvent qu'un boss avec spawnRate:0.2.
+ */
+function weightedRandom(pool) {
+  const totalWeight = pool.reduce((sum, b) => sum + (b.spawnRate || 1), 0);
+  let r = Math.random() * totalWeight;
+  for (const b of pool) {
+    r -= (b.spawnRate || 1);
+    if (r <= 0) return b;
+  }
+  return pool[pool.length - 1];
+}
+
 export function pickBossForLevel(playerLevel, zone, allBosses, defeatedRegionalBosses) {
   const pool = allBosses.filter((b) => {
     if (b.region !== zone.id) return false;
@@ -34,12 +48,12 @@ export function pickBossForLevel(playerLevel, zone, allBosses, defeatedRegionalB
   });
   if (pool.length === 0) {
     const fb = allBosses.filter((b) => b.region === zone.id && !defeatedRegionalBosses.includes(b.id));
-    if (fb.length > 0) return fb[Math.floor(Math.random() * fb.length)];
+    if (fb.length > 0) return weightedRandom(fb);
     return allBosses[0];
   }
   const close = pool.filter((b) => Math.abs(b.level - playerLevel) <= 8);
   const final = close.length > 0 ? close : pool;
-  return final[Math.floor(Math.random() * final.length)];
+  return weightedRandom(final);
 }
 
 export function getRegionalBossForZone(zone, defeatedRegionalBosses, allBosses) {

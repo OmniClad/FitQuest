@@ -5,6 +5,7 @@ import { rollDrops } from '../core/rewards.js';
 import { gameEvents } from '../audio/gameEvents.js';
 import { bumpQuestCounter } from '../core/questEngine.js';
 import { playBossIdleOrFury } from '../ui/renderCombatFx.js';
+import { fillLimitBar, triggerLimit, applyLimitEffect, checkLimitUnlocks } from '../core/limitBreak.js';
 
 /** Durée approx. anim. attaque ours (12 img @ 10 ips) avant retour idle / furie. */
 const BOSS_SPRITE_POST_ATTACK_MS = 1250;
@@ -58,7 +59,7 @@ export function createSessionFlow(deps) {
     }
     state.player.stats.hp_current = state.player.stats.constitution;
     const tier = getDifficultyTier(state.boss.current.level);
-    if (typeof state.boss.current.heroSkillUsed !== 'boolean') state.boss.current.heroSkillUsed = false;
+    // (heroSkillUsed supprimé — remplacé par le système de Limite)
     state.session_current = {
       startedAt: new Date().toISOString(),
       exercises: exerciseIds.map((id) => {
@@ -136,6 +137,9 @@ export function createSessionFlow(deps) {
     const totalXp = Math.round((b.xp + xpFromSession) * (isRegional ? 1.5 : 1));
     const levelsGained = applyXp(state, totalXp);
     state.boss.defeated.push({ id: b.id, date: new Date().toISOString() });
+    // Compteur de kills boss (pour déblocage Limites de type kill_count)
+    if (!state.player.bossKillCounts) state.player.bossKillCounts = {};
+    state.player.bossKillCounts[b.id] = (state.player.bossKillCounts[b.id] || 0) + 1;
     state.meta.total_bosses += 1;
     state.meta.total_sessions += 1;
     let unlockedZone = null;
@@ -152,8 +156,17 @@ export function createSessionFlow(deps) {
       d.qty = Math.round(d.qty * 1.5);
     });
     drops.forEach((d) => {
-      if (d.type === 'material') state.player.materials[d.id] = (state.player.materials[d.id] || 0) + d.qty;
-      else if (d.type === 'ingredient') state.player.ingredients[d.id] = (state.player.ingredients[d.id] || 0) + d.qty;
+      if (d.type === 'material') {
+        state.player.materials[d.id] = (state.player.materials[d.id] || 0) + d.qty;
+      } else if (d.type === 'ingredient') {
+        state.player.ingredients[d.id] = (state.player.ingredients[d.id] || 0) + d.qty;
+      } else if (d.type === 'weapon') {
+        // Instancier l'arme depuis le catalogue
+        const weaponData = catalog.allEquipment().find((w) => w.id === d.id);
+        if (weaponData) {
+          state.player.weapons.push({ ...weaponData, combLevel: 0 });
+        }
+      }
     });
     state._lastVictory = {
       isRegional,
@@ -185,6 +198,9 @@ export function createSessionFlow(deps) {
     saveState();
     bumpQuestCounter(state, 'sessions_complete', 1, showToast);
     bumpQuestCounter(state, 'bosses_defeated', 1, showToast);
+    // Vérifier si de nouvelles Limites se débloquent après la victoire
+    const newLimits = checkLimitUnlocks(state);
+    newLimits.forEach((name) => showToast(`🔓 Nouvelle Limite débloquée : <strong>${name}</strong> !`, 4000));
     saveState();
     gameEvents.emit('victory');
     showVictoryModal(b, drops, levelsGained, totalXp);
@@ -258,16 +274,25 @@ export function createSessionFlow(deps) {
     if (!state.player.records_vol) state.player.records_vol = {};
 
     if (exData.hasWeight && weight > 0) {
-      // Exercice avec poids : record si kg augmente OU si volume augmente
-      const prevKg = state.player.records[currentExerciseId] || 0;
+      // Exercice avec poids : record uniquement si le score composite progresse.
+      // score = volume × (1 + poids × 0.05) — empêche de tricher en baissant le poids ou le volume.
+      const prevKg  = state.player.records[currentExerciseId]     || 0;
       const prevVol = state.player.records_vol[currentExerciseId] || 0;
-      if (weight > prevKg) {
-        state.player.records[currentExerciseId] = weight;
-        recordBeaten = true;
-      }
-      if (volume > prevVol) {
+      const prevScore = prevVol * (1 + prevKg * 0.05);
+      const newScore  = volume  * (1 + weight * 0.05);
+      if (newScore > prevScore && weight >= prevKg && volume >= prevVol) {
+        // Progrès réel sur les deux axes — on met à jour les deux valeurs
+        state.player.records[currentExerciseId]     = weight;
         state.player.records_vol[currentExerciseId] = volume;
         recordBeaten = true;
+      } else if (newScore > prevScore) {
+        // Score global meilleur mais l'un des axes a régressé — on note le record
+        // seulement si le score composite dépasse clairement (+10 %)
+        if (newScore >= prevScore * 1.10) {
+          state.player.records[currentExerciseId]     = Math.max(weight, prevKg);
+          state.player.records_vol[currentExerciseId] = Math.max(volume, prevVol);
+          recordBeaten = true;
+        }
       }
     } else {
       // Exercice sans poids : record sur le volume uniquement
@@ -290,8 +315,9 @@ export function createSessionFlow(deps) {
     const totalSpeed = state.player.stats.agility + (bonus.agility || 0);
     const critChance = Math.min(40, 5 + totalSpeed * 0.5) / 100;
     const isCrit = Math.random() < critChance;
-    const skillUsed = !!state.session_current.skillArmed;
-    let damage = computeExerciseDamage(currentExerciseId, sets, repsOrSec, weight, { skill: skillUsed });
+    // buff_atk de Limite : les N prochains exercices infligent ×2
+    const limitBuff = (state.session_current.limitBuffTurns || 0) > 0;
+    let damage = computeExerciseDamage(currentExerciseId, sets, repsOrSec, weight, { skill: limitBuff });
     if (isCrit) {
       const critMult = Math.min(2.5, 1.4 + totalSpeed * 0.005);
       damage = Math.round(damage * critMult);
@@ -306,9 +332,8 @@ export function createSessionFlow(deps) {
     state.boss.current.hp = Math.max(0, state.boss.current.hp - damage);
     state.session_current.totalDamage += damage;
     state.session_current.xpEarned += 30;
-    if (skillUsed) {
-      state.boss.current.heroSkillUsed = true;
-      state.session_current.skillArmed = false;
+    if (limitBuff) {
+      state.session_current.limitBuffTurns = Math.max(0, state.session_current.limitBuffTurns - 1);
     }
     state.session_current.spellUsedThisTurn = false;
     closeModal('exerciseModal');
@@ -316,7 +341,7 @@ export function createSessionFlow(deps) {
     showFloatingDmg(`-${damage}${isCrit ? ' !' : ''}`, isCrit ? 'player-crit' : 'player-dmg');
     let msg = `⚔ ${ex.name} ! <strong>+${damage} dégâts</strong>`;
     if (isCrit) msg += ' <strong>(CRITIQUE)</strong>';
-    if (skillUsed) msg += ' <strong>⚡</strong>';
+    if (limitBuff) msg += ` <strong>💥 LIMITE ×2 (${state.session_current.limitBuffTurns} restant${state.session_current.limitBuffTurns > 1 ? 's' : ''})</strong>`;
     if (recordBeaten) msg += `<br>🏆 <strong>RECORD BATTU !</strong> +1 ${recordStatLabel}`;
     showToast(msg, 3500);
     gameEvents.emit('combat_hit', { crit: isCrit });
@@ -342,6 +367,8 @@ export function createSessionFlow(deps) {
       const dmg = computeBossCounterAttack(st.boss.current);
       st.player.stats.hp_current = Math.max(0, st.player.stats.hp_current - dmg);
       st.session_current.totalReceived += dmg;
+      // Remplir la barre de Limite à chaque coup reçu
+      fillLimitBar(st, dmg);
       saveState();
       shakeScreen();
       showFloatingDmg(`-${dmg}`, 'boss-dmg', 'playerHpBar');
@@ -367,8 +394,8 @@ export function createSessionFlow(deps) {
   function castSpell(slotIdx) {
     const state = getState();
     if (!state.session_current || !state.boss.current) return;
-    if (state.session_current.skillArmed || state.session_current.spellUsedThisTurn) {
-      showToast('⚠ Action déjà utilisée ce tour');
+    if (state.session_current.spellUsedThisTurn) {
+      showToast('⚠ Sort déjà utilisé ce tour');
       return;
     }
     const spellId = state.player.equippedSpells[slotIdx];
@@ -421,6 +448,38 @@ export function createSessionFlow(deps) {
       showToast(`✨ ${spell.name} ! <strong>+${heal} PV</strong>`, 3000);
     }
     saveState();
+    renderSessionView();
+  }
+
+  function activateLimit() {
+    const state = getState();
+    if (!state.session_current || !state.boss.current) {
+      showToast('⚠ Pas de combat en cours');
+      return;
+    }
+    const limit = triggerLimit(state);
+    if (!limit) {
+      showToast('⚠ La barre de Limite n\'est pas encore pleine');
+      return;
+    }
+    const result = applyLimitEffect(state, limit);
+    gameEvents.emit('combat_hit', { crit: true });
+    if (result.dmg > 0) {
+      flashBossPortrait(true);
+      showFloatingDmg(`-${result.dmg}`, 'player-crit');
+    }
+    if (result.heal > 0) {
+      showFloatingDmg(`+${result.heal}`, 'heal', 'playerHpBar');
+    }
+    showToast(result.msg, 4000);
+    // Vérifier déblocages Limites après usage
+    const newLimits = checkLimitUnlocks(state);
+    newLimits.forEach((name) => showToast(`🔓 Nouvelle Limite débloquée : <strong>${name}</strong> !`, 4000));
+    saveState();
+    if (state.boss.current && state.boss.current.hp <= 0) {
+      setTimeout(() => victory(), 800);
+      return;
+    }
     renderSessionView();
   }
 
@@ -512,6 +571,7 @@ export function createSessionFlow(deps) {
     abandonSession,
     confirmExerciseSubmission,
     castSpell,
+    activateLimit,
     regenerateExerciseSet,
     finishSession,
     victory,

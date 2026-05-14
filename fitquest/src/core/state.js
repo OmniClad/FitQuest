@@ -33,15 +33,20 @@ export function defaultState() {
       weapons: [],
       materials: {},
       ingredients: {},
-      records: {},      /* max kg par exercice (hasWeight=true) */
-      records_vol: {},  /* max volume (sets×reps ou sets×sec) par exercice */
-      records_bonus: {},/* nb de fois qu'un record a été battu par exercice */
+      records: {},
+      records_vol: {},
+      records_bonus: {},
       currentZone: 'foret',
       unlockedZones: ['foret'],
       defeatedRegionalBosses: [],
       recovering: false,
       knownSpells: ['fireball', 'holy_light', 'wind_strike'],
       equippedSpells: ['fireball', 'holy_light', 'wind_strike'],
+      limitBar: 0,
+      knownLimits: ['blade_rush'],
+      equippedLimit: 'blade_rush',
+      limitUsesCount: {},
+      bossKillCounts: {},
       custom: {
         zones: [],
         exercises: [],
